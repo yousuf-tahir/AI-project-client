@@ -1,0 +1,49 @@
+# Create .gitignore file
+cat > .gitignore << EOF
+# React
+node_modules/
+build/
+.env
+.env.local
+.DS_Store
+*.log
+
+# FastAPI
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.env
+*.so
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# MongoDB
+playground-*.js
+EOF
+
+# Static files and uploads
+backend/static/avatars/
+backend/static/profile_docs/
+backend/static/uploads/
+
+# Node modules
+backend/node_modules/
+frontend/node_modules/
+
+# Python
+backend/__pycache__/
+backend/*.pyc
+backend/.env
