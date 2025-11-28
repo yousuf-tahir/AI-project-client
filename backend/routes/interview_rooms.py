@@ -1,4 +1,4 @@
-# routes/interview_rooms.py - FIXED VERSION with server-side socket broadcasts
+# routes/interview_rooms.py - FIXED VERSION with proper sync
 
 from fastapi import APIRouter, HTTPException, status, Request
 from pydantic import BaseModel, Field
@@ -127,6 +127,7 @@ async def create_interview_room(payload: CreateRoomRequest):
             "$set": {
                 "room_id": room_id,
                 "room_status": "created",
+                "status": "scheduled",  # Ensure status is set
                 "questions": question_list,
                 "current_question_index": 0,
                 "qa": [],
@@ -167,36 +168,57 @@ async def start_interview(interview_id: str, request: Request):
     if not interview.get("room_id"):
         raise HTTPException(status_code=400, detail="Room not created yet")
 
-    # Update database
+    # Update database with precise server timestamp
+    server_time = datetime.datetime.utcnow()
     await db.interviews.update_one(
         {"_id": interview_id},
         {
             "$set": {
                 "status": "in_progress",
-                "started_at": datetime.datetime.utcnow(),
-                "updated_at": datetime.datetime.utcnow()
+                "started_at": server_time,
+                "updated_at": server_time,
+                "current_question_index": 0  # Ensure we start at question 0
             }
         }
     )
 
-    print(f"[API] Interview {interview_id} started, broadcasting to room {interview['room_id']}")
+    print(f"[API] Interview {interview_id} started at {server_time.isoformat()}, broadcasting to room {interview['room_id']}")
 
-    # ✅ CRITICAL FIX: Server-side broadcast via Socket.IO
+    # ✅ FIXED: Server-side broadcast via Socket.IO with proper error handling
     try:
-        sio = request.app.state.sio  # Access socket.io instance from app state
+        # Check if Socket.IO is available on app state
+        if not hasattr(request.app.state, 'sio') or request.app.state.sio is None:
+            print(f"[WARNING] Socket.IO not available on app.state, skipping broadcast")
+            # Still return success since DB was updated
+            return {
+                "message": "Interview started successfully (broadcast skipped)",
+                "status": "in_progress",
+                "startedAt": server_time.isoformat(),
+                "serverTime": server_time.isoformat()
+            }
+
+        sio = request.app.state.sio
+        
+        # Verify the room exists and has participants before broadcasting
         await sio.emit('interview_started', {
             'roomId': interview['room_id'],
-            'timestamp': datetime.datetime.utcnow().isoformat()
+            'timestamp': server_time.isoformat(),
+            'serverTime': server_time.isoformat(),
+            'currentQuestionIndex': 0
         }, room=interview['room_id'])
-        print(f"[API] Broadcasted interview_started to room {interview['room_id']}")
+        print(f"[API] ✅ Broadcasted interview_started to room {interview['room_id']}")
+        
     except Exception as e:
-        print(f"[ERROR] Failed to broadcast interview_started: {e}")
+        print(f"[ERROR] ❌ Failed to broadcast interview_started: {e}")
+        # Don't raise error here - interview was started in DB, just broadcast failed
+        # Log the error but still return success
 
     return {
         "message": "Interview started successfully",
-        "status": "in_progress"
+        "status": "in_progress",
+        "startedAt": server_time.isoformat(),
+        "serverTime": server_time.isoformat()
     }
-
 
 # --- FIXED: Submit Answer with Server-Side Broadcast ---
 @router.post("/{interview_id}/submit-answer")
@@ -236,7 +258,10 @@ async def submit_answer(interview_id: str, payload: dict, request: Request):
     }
 
     next_index = question_index + 1
+    # ✅ CRITICAL FIX: Check if we just answered the LAST question
     is_last = next_index >= len(questions)
+    
+    print(f"[API] Q{question_index} submitted, next={next_index}, total={len(questions)}, isLast={is_last}")
 
     # Update database
     update_data = {
@@ -247,6 +272,8 @@ async def submit_answer(interview_id: str, payload: dict, request: Request):
     if is_last:
         update_data["status"] = "completed"
         update_data["completed_at"] = timestamp
+        update_data["room_status"] = "completed"
+        print(f"[API] 🎉 Interview completed!")
 
     await db.interviews.update_one(
         {"_id": interview_id},
@@ -256,33 +283,42 @@ async def submit_answer(interview_id: str, payload: dict, request: Request):
         }
     )
 
-    print(f"[API] Answer submitted for Q{question_index}, moving to Q{next_index}, complete={is_last}")
-
-    # ✅ CRITICAL FIX: Server-side broadcast via Socket.IO
+    # Broadcast via Socket.IO
     try:
         sio = request.app.state.sio
-        await sio.emit('next_question', {
-            'roomId': interview['room_id'],
-            'nextIndex': next_index,
-            'isComplete': is_last,
-            'timestamp': timestamp.isoformat()
-        }, room=interview['room_id'])
-        print(f"[API] Broadcasted next_question to room {interview['room_id']}")
+        if sio:
+            room_id = interview['room_id']
+            broadcast_data = {
+                'roomId': room_id,
+                'nextIndex': next_index,
+                'isComplete': is_last,
+                'timestamp': timestamp.isoformat(),
+                'serverTime': timestamp.isoformat()
+            }
+            
+            await sio.emit('next_question', broadcast_data, room=room_id)
+            print(f"[API] ✅ Broadcasted next_question: nextIndex={next_index}, isComplete={is_last}")
+        else:
+            print(f"[API] ❌ Socket.IO instance is None")
+            
     except Exception as e:
-        print(f"[ERROR] Failed to broadcast next_question: {e}")
+        print(f"[API] ❌ Failed to broadcast next_question: {e}")
+        import traceback
+        traceback.print_exc()
 
     return {
         "message": "Answer submitted successfully",
         "next_question_index": next_index,
-        "is_complete": is_last
+        "is_complete": is_last,
+        "serverTime": timestamp.isoformat()
     }
-
 
 # --- Get Current State ---
 @router.get("/{interview_id}/current-state")
 async def get_current_interview_state(interview_id: str):
     """
     Get current state of interview including questions and current index.
+    Includes server time for client sync.
     """
     db = await Database.get_db()
     if db is None:
@@ -292,6 +328,8 @@ async def get_current_interview_state(interview_id: str):
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
 
+    server_time = datetime.datetime.utcnow()
+    
     return {
         "interviewId": interview_id,
         "field": interview.get("field"),
@@ -300,8 +338,9 @@ async def get_current_interview_state(interview_id: str):
         "qa": interview.get("qa", []),
         "total_questions": len(interview.get("questions", [])),
         "status": interview.get("status", "scheduled"),
-        "started_at": interview.get("started_at"),
-        "completed_at": interview.get("completed_at")
+        "started_at": interview.get("started_at").isoformat() if interview.get("started_at") else None,
+        "completed_at": interview.get("completed_at").isoformat() if interview.get("completed_at") else None,
+        "serverTime": server_time.isoformat()
     }
 
 

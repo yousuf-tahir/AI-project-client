@@ -109,9 +109,12 @@ async def lifespan(app: FastAPI):
             await create_admin_user()
             
             # Setup socket handlers - NO AWAIT!
-            # This now includes interview_started and next_question events
             setup_socket_handlers(sio, get_database)
             print("✅ Socket.IO handlers registered (including interview controls)")
+            
+            # ✅ CRITICAL FIX: Store sio in app.state so routes can access it
+            app.state.sio = sio
+            print("✅ Socket.IO instance stored in app.state")
             
             break
 

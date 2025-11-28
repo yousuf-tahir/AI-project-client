@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import io from 'socket.io-client';
 import axios from "axios";
 import "../styles/InterviewRoom.css";
@@ -22,180 +22,172 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
     const timerRef = useRef(null);
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
-    const isSubmittingRef = useRef(false); // ✅ PREVENT DUPLICATE SUBMISSIONS
-    const currentAnswerRef = useRef(''); // ✅ TRACK CURRENT ANSWER
+    const isSubmittingRef = useRef(false);
+    const currentAnswerRef = useRef('');
+    const interviewStartTimeRef = useRef(null);
+    const currentPhaseStartRef = useRef(null);
+    const currentPhaseRef = useRef('waiting');
+    
+    // ✅ Step 1 — Create a ref
+    const currentQuestionIndexRef = useRef(0);
    
     const API_BASE = 'http://localhost:8000';
     const SOCKET_URL = 'http://localhost:8000';
     
-    // ✅ SYNC ANSWER STATE WITH REF
-    useEffect(() => {
-        currentAnswerRef.current = answer;
-    }, [answer]);
-    
-    // Cleanup all refs and timers
-    useEffect(() => {
-        mountedRef.current = true;
-       
-        return () => {
-            mountedRef.current = false;
-           
-            // Clear all timers
-            if (timerRef.current) {
+    // Timer function - defined first
+    const startSyncedTimer = useCallback((durationSeconds, onComplete, phase) => {
+        console.log(`[TIMER] Starting ${phase} timer for ${durationSeconds}s`);
+        
+        // Clear any existing timer
+        if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+        }
+        
+        const startTime = Date.now();
+        currentPhaseStartRef.current = startTime;
+        currentPhaseRef.current = phase;
+        
+        // Update immediately
+        setTimeLeft(durationSeconds);
+        
+        // Use setInterval for reliable timing that works with recording
+        timerRef.current = setInterval(() => {
+            if (!mountedRef.current || currentPhaseRef.current !== phase) {
                 clearInterval(timerRef.current);
                 timerRef.current = null;
+                return;
             }
-           
-            // Cleanup media recorder
-            if (mediaRecorderRef.current && recording) {
-                try {
-                    mediaRecorderRef.current.stop();
-                    mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-                } catch (e) {
-                    console.error('Error stopping media recorder:', e);
+            
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const remaining = Math.max(0, durationSeconds - elapsed);
+            
+            setTimeLeft(remaining);
+            
+            // Check if time is up
+            if (remaining <= 0) {
+                console.log(`[TIMER] ${phase} timer complete`);
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+                
+                if (mountedRef.current && currentPhaseRef.current === phase) {
+                    try {
+                        onComplete();
+                    } catch (error) {
+                        console.error('[TIMER] Error in timer completion callback:', error);
+                    }
                 }
             }
-           
-            // Cleanup socket
-            if (socketRef.current) {
-                socketRef.current.disconnect();
-                socketRef.current = null;
-            }
-           
-            hasJoinedRef.current = false;
-        };
+        }, 100);
     }, []);
+
+    // Submit answer function
+  const submitAnswer = async () => {
+    if (isSubmittingRef.current) {
+        console.log('[INTERVIEW] Already submitting, skipping duplicate');
+        return;
+    }
     
-    // Save room state for persistence
-    const saveRoomState = (state) => {
-        try {
-            sessionStorage.setItem('interviewRoomState', JSON.stringify({
-                ...state,
-                timestamp: Date.now()
-            }));
-        } catch (e) {
-            console.error('Error saving room state:', e);
+    isSubmittingRef.current = true;
+    console.log('[INTERVIEW] Submitting answer...', {
+        currentQuestionIndex,
+        questionsLength: questions.length,
+        interviewState
+    });
+    
+    try {
+        // Stop recording if active
+        if (recording) {
+            console.log('[INTERVIEW] Recording active, stopping first...');
+            await stopRecording();
+            await new Promise(resolve => setTimeout(resolve, 500));
         }
-    };
-    
-    // Load room state
-    const loadRoomState = () => {
-        try {
-            const saved = sessionStorage.getItem('interviewRoomState');
-            if (saved) {
-                const state = JSON.parse(saved);
-                if (Date.now() - state.timestamp < 300000) { // 5 minutes
-                    return state;
-                }
-            }
-        } catch (e) {
-            console.error('Error loading room state:', e);
-        }
-        return null;
-    };
-    
-    // Fetch current interview state
-    const fetchInterviewState = async (interviewId) => {
-        try {
-            console.log('[INTERVIEW] Fetching state for:', interviewId);
-            const resp = await fetch(`${API_BASE}/api/interview-rooms/${interviewId}/current-state`);
-            if (!resp.ok) throw new Error('Failed to fetch interview state');
-           
-            const data = await resp.json();
-            console.log('[INTERVIEW] Fetched state:', data);
-           
-            setQuestions(data.questions || []);
-            setCurrentQuestionIndex(data.current_question_index || 0);
-           
-            // Save state for persistence
-            saveRoomState({
-                questions: data.questions || [],
-                currentQuestionIndex: data.current_question_index || 0,
-                status: data.status
-            });
-           
-            // Handle different states
-            if (data.status === 'in_progress') {
-                if (data.current_question_index < data.questions.length) {
-                    startReadingPhase();
-                } else {
-                    setInterviewState('complete');
-                }
-            } else if (data.status === 'completed') {
-                setInterviewState('complete');
+        
+        const finalAnswer = currentAnswerRef.current.trim() || '(No answer provided)';
+        console.log('[INTERVIEW] Final answer to submit:', finalAnswer.substring(0, 100));
+        
+        const userData = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || '{}');
+        
+        // ✅ Step 3 — submitAnswer MUST use the ref, not the state
+        fetch(`${API_BASE}/api/interview-rooms/${interviewId}/submit-answer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question_index: currentQuestionIndexRef.current, // ✅ FIX: Use ref instead of state
+                answer: finalAnswer,
+                user_id: userData?._id || userData?.id
+            })
+        }).then(resp => {
+            if (resp.ok) {
+                console.log('[INTERVIEW] Answer submitted successfully');
             } else {
-                setInterviewState('waiting');
+                console.error('[INTERVIEW] Submit failed');
             }
-           
-        } catch (err) {
-            console.error('Error fetching interview state:', err);
-            const savedState = loadRoomState();
-            if (savedState) {
-                setQuestions(savedState.questions || []);
-                setCurrentQuestionIndex(savedState.currentQuestionIndex || 0);
-            }
+        }).catch(err => {
+            console.error('[ERROR] Error submitting answer:', err);
+        });
+        
+        // Clear timer immediately (don't wait for response)
+        if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
         }
-    };
-    
-    // Start reading phase with timer
-    const startReadingPhase = () => {
+        
+        // Reset answer state immediately
+        setAnswer('');
+        currentAnswerRef.current = '';
+        
+        console.log('[INTERVIEW] Waiting for server socket broadcast...');
+        
+    } catch (err) {
+        console.error('[ERROR] Error in submitAnswer:', err);
+        isSubmittingRef.current = false;
+    } finally {
+        // Reset submission lock after a short delay
+        setTimeout(() => {
+            isSubmittingRef.current = false;
+        }, 1000);
+    }
+};
+
+    // Reading phase
+    const startReadingPhase = useCallback(() => {
         console.log('[INTERVIEW] Starting reading phase');
         setInterviewState('reading');
-        setTimeLeft(8);
         setAnswer('');
-        currentAnswerRef.current = ''; // ✅ RESET ANSWER REF
+        currentAnswerRef.current = '';
         setRecording(false);
         setTranscribing(false);
-        isSubmittingRef.current = false; // ✅ RESET SUBMISSION FLAG
-       
-        if (timerRef.current) {
-            clearInterval(timerRef.current);
-            timerRef.current = null;
-        }
-       
-        timerRef.current = setInterval(() => {
-            setTimeLeft(prev => {
-                if (prev <= 1) {
-                    clearInterval(timerRef.current);
-                    timerRef.current = null;
-                    startAnsweringPhase();
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-    };
+        isSubmittingRef.current = false;
+        
+        startSyncedTimer(8, () => {
+            if (mountedRef.current) {
+                startAnsweringPhase();
+            }
+        }, 'reading');
+    }, [startSyncedTimer]);
+
+    // Answering phase
+   const startAnsweringPhase = useCallback(() => {
+    console.log('[INTERVIEW] Starting answering phase');
     
-    // Start answering phase with timer
-    const startAnsweringPhase = () => {
-        console.log('[INTERVIEW] Starting answering phase');
-        setInterviewState('answering');
-        setTimeLeft(30);
-       
-        if (timerRef.current) {
-            clearInterval(timerRef.current);
-            timerRef.current = null;
-        }
-       
-        timerRef.current = setInterval(() => {
-            setTimeLeft(prev => {
-                if (prev <= 1) {
-                    clearInterval(timerRef.current);
-                    timerRef.current = null;
-                    // ✅ CALL SUBMIT WITH SLIGHT DELAY TO ENSURE TRANSCRIPTION COMPLETES
-                    setTimeout(() => submitAnswer(), 100);
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-    };
+    setInterviewState('answering');
     
-    // Start recording
+    startSyncedTimer(30, () => {
+        if (mountedRef.current) {
+            console.log('[INTERVIEW] Auto-submitting answer due to timer completion');
+            submitAnswer();
+        }
+    }, 'answering');
+}, [startSyncedTimer]);
+
+    // Recording functions
     const startRecording = async () => {
         if (interviewState !== 'answering') return;
        
         try {
+            console.log('[RECORDING] Starting recording setup...');
+            
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
@@ -216,18 +208,22 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
                     audioChunksRef.current.push(e.data);
                 }
             };
+
+            mediaRecorder.onerror = (e) => {
+                console.error('[RECORDING] Error:', e);
+                setRecording(false);
+            };
            
             mediaRecorder.start(1000);
             setRecording(true);
-            console.log('[RECORDING] Started');
+            console.log('[RECORDING] Started - Timer should continue running');
            
         } catch (error) {
             console.error("Mic access denied:", error);
             alert("Microphone permissions are required for voice answers!");
         }
     };
-    
-    // ✅ IMPROVED: Stop recording and transcribe with proper state management
+
     const stopRecording = () => {
         return new Promise((resolve) => {
             if (!mediaRecorderRef.current || !recording) {
@@ -258,7 +254,6 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
                         const transcribedText = res.data.text || '';
                         console.log('[TRANSCRIPTION] Success:', transcribedText);
                         
-                        // ✅ UPDATE BOTH STATE AND REF
                         const newAnswer = currentAnswerRef.current + (currentAnswerRef.current ? ' ' : '') + transcribedText;
                         setAnswer(newAnswer);
                         currentAnswerRef.current = newAnswer;
@@ -271,7 +266,6 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
                     alert("Error transcribing audio. Your typed answer will be saved.");
                 } finally {
                     setTranscribing(false);
-                    // Clean up media tracks
                     if (mediaRecorderRef.current && mediaRecorderRef.current.stream) {
                         mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
                     }
@@ -284,87 +278,129 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
             mediaRecorderRef.current.stop();
         });
     };
+
+    // Debug state changes
+    useEffect(() => {
+        console.log('[STATE] Current state:', {
+            loading,
+            error: error?.message,
+            roomData: !!roomData,
+            participants: participants.length,
+            questions: questions.length,
+            interviewState,
+            currentQuestionIndex,
+            timeLeft
+        });
+    }, [loading, error, roomData, participants, questions, interviewState, currentQuestionIndex, timeLeft]);
     
-    // ✅ IMPROVED: Submit answer with duplicate prevention
-    const submitAnswer = async () => {
-        // ✅ PREVENT DUPLICATE SUBMISSIONS
-        if (isSubmittingRef.current) {
-            console.log('[INTERVIEW] Submission already in progress, skipping...');
-            return;
+    // SYNC ANSWER STATE WITH REF
+    useEffect(() => {
+        currentAnswerRef.current = answer;
+    }, [answer]);
+    
+    // SYNC PHASE REF
+    useEffect(() => {
+        currentPhaseRef.current = interviewState;
+    }, [interviewState]);
+    
+    // CRITICAL FIX: Deduplicate participants helper
+    const deduplicateParticipants = useCallback((participantList) => {
+        const seen = new Map();
+        const unique = [];
+        
+        for (const p of participantList) {
+            const userId = p.userId || p.user_id;
+            if (userId && !seen.has(userId)) {
+                seen.set(userId, true);
+                unique.push({
+                    userId: userId,
+                    userName: p.userName || p.user_name || 'Unknown',
+                    userType: p.userType || p.user_type || 'unknown',
+                    joinedAt: p.joinedAt || p.joined_at
+                });
+            }
         }
         
-        isSubmittingRef.current = true;
-        console.log('[INTERVIEW] Submitting answer...');
+        console.log(`[PARTICIPANTS] Deduplicated ${participantList.length} → ${unique.length} participants`);
+        return unique;
+    }, []);
+    
+    // CRITICAL FIX: Safe participant state update
+    const updateParticipants = useCallback((newParticipants) => {
+        if (!mountedRef.current) return;
         
+        const deduplicated = deduplicateParticipants(newParticipants);
+        setParticipants(deduplicated);
+    }, [deduplicateParticipants]);
+
+    // Helper function for API-based state sync
+    const syncStateViaAPI = async () => {
         try {
-            // ✅ WAIT FOR RECORDING TO STOP AND TRANSCRIBE
-            if (recording) {
-                console.log('[INTERVIEW] Recording active, stopping first...');
-                await stopRecording();
-                // ✅ WAIT A BIT MORE FOR STATE TO UPDATE
-                await new Promise(resolve => setTimeout(resolve, 500));
+            const stateResp = await fetch(`${API_BASE}/api/interview-rooms/${interviewId}/current-state`);
+            if (stateResp.ok) {
+                const stateData = await stateResp.json();
+                console.log('[INTERVIEW] API State sync result:', stateData);
+                
+                if (stateData.status === 'in_progress') {
+                    console.log('[INTERVIEW] ✅ Interview confirmed in progress, starting reading phase');
+                    setQuestions(stateData.questions || []);
+                    // ✅ Step 2 — Update both state and ref on initial load
+                    setCurrentQuestionIndex(stateData.current_question_index || 0);
+                    currentQuestionIndexRef.current = stateData.current_question_index || 0;
+                    startReadingPhase();
+                } else {
+                    console.log('[INTERVIEW] ❌ Interview still not in progress, status:', stateData.status);
+                }
             }
-            
-            // ✅ USE REF VALUE TO GET LATEST ANSWER
-            const finalAnswer = currentAnswerRef.current.trim() || '(No answer provided)';
-            console.log('[INTERVIEW] Final answer to submit:', finalAnswer);
-            
-            const user = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || '{}');
-            
-            const resp = await fetch(`${API_BASE}/api/interview-rooms/${interviewId}/submit-answer`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    question_index: currentQuestionIndex,
-                    answer: finalAnswer,
-                    user_id: user?._id || user?.id
-                })
-            });
-            
-            if (!resp.ok) throw new Error('Failed to submit answer');
-            
-            const data = await resp.json();
-            console.log('[INTERVIEW] Answer submitted successfully:', data);
-            
-            // ✅ RESET FOR NEXT QUESTION
-            setAnswer('');
-            currentAnswerRef.current = '';
-            
-        } catch (err) {
-            console.error('[ERROR] Error submitting answer:', err);
-            alert('Failed to submit answer. Please try again.');
-        } finally {
-            // ✅ RESET SUBMISSION FLAG AFTER A DELAY
-            setTimeout(() => {
-                isSubmittingRef.current = false;
-            }, 1000);
+        } catch (syncErr) {
+            console.error('[INTERVIEW] API state sync failed:', syncErr);
         }
     };
-    
-    // HR starts the interview
+
     const handleStartInterview = async () => {
         try {
-            console.log('[INTERVIEW] Starting interview');
+            console.log('[INTERVIEW] HR initiating interview start...');
            
             const resp = await fetch(`${API_BASE}/api/interview-rooms/${interviewId}/start-interview`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
            
-            if (!resp.ok) throw new Error('Failed to start interview');
-           
-            console.log('[INTERVIEW] Interview started successfully');
-           
+            if (!resp.ok) {
+                const errorData = await resp.json();
+                throw new Error(errorData.detail || 'Failed to start interview');
+            }
+            
+            const data = await resp.json();
+            console.log('[INTERVIEW] Start response:', data);
+            
+            // CRITICAL FIX: Force emit interview_started event to ensure all clients receive it
+            if (socketRef.current?.connected && roomData) {
+                console.log('[INTERVIEW] Emitting interview_started event to all clients');
+                socketRef.current.emit('interview_started', {
+                    roomId: roomData.roomId,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            // Set a timeout to fallback to direct API call
+            setTimeout(async () => {
+                if (interviewState === 'waiting') {
+                    console.log('[INTERVIEW] Interview not started, trying API sync');
+                    await syncStateViaAPI();
+                }
+            }, 2000);
+               
         } catch (err) {
             console.error('[ERROR] Error starting interview:', err);
             alert('Failed to start interview: ' + err.message);
         }
     };
-    
-    // Enhanced socket connection with better error handling
-    const connectSocket = (roomInfo) => {
+
+    // FIXED: Enhanced socket connection
+    const connectSocket = useCallback((roomInfo) => {
         if (hasJoinedRef.current && socketRef.current?.connected) {
-            console.log('[SOCKET] Already connected');
+            console.log('[SOCKET] Already connected, skipping');
             return;
         }
        
@@ -374,15 +410,16 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
         const socket = io(SOCKET_URL, {
             transports: ['websocket', 'polling'],
             reconnection: true,
-            reconnectionAttempts: 10,
+            reconnectionAttempts: 3,
             reconnectionDelay: 1000,
-            timeout: 20000
+            timeout: 10000,
         });
        
         socketRef.current = socket;
        
         socket.on('connect', () => {
-            console.log('[SOCKET] Connected:', socket.id);
+            console.log('[SOCKET] ✅ Connected:', socket.id);
+            
             socket.emit('join_room', {
                 roomId: roomInfo.roomId,
                 userId: roomInfo.userId,
@@ -391,87 +428,231 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
             });
         });
        
+        // CRITICAL FIX: Process ALL data from room_joined
         socket.on('room_joined', (data) => {
-            console.log('[SOCKET] Room joined:', data);
+            console.log('[SOCKET] ✅ Room joined - questions:', data.interviewInfo?.questions?.length, 'currentIndex:', data.interviewInfo?.currentQuestionIndex);
             if (mountedRef.current) {
-                setParticipants(data.participants || []);
+                // Update participants
+                if (data.participants) {
+                    updateParticipants(data.participants);
+                }
+                
+                // CRITICAL: Update ALL interview state from room_joined
+                if (data.interviewInfo) {
+                    console.log('[SOCKET] 📝 Processing interviewInfo from room_joined:', data.interviewInfo);
+                    
+                    // Update questions
+                    if (data.interviewInfo.questions) {
+                        setQuestions(data.interviewInfo.questions);
+                        console.log(`[SOCKET] Set ${data.interviewInfo.questions.length} questions`);
+                    }
+                    
+                    // ✅ Step 2 — Update both state and ref when setting initial value
+                    setCurrentQuestionIndex(data.interviewInfo.currentQuestionIndex || 0);
+                    currentQuestionIndexRef.current = data.interviewInfo.currentQuestionIndex || 0;
+                    
+                    // Update interview state
+                    if (data.interviewInfo.status === 'in_progress') {
+                        console.log('[SOCKET] 🎬 Interview in progress, starting reading phase');
+                        interviewStartTimeRef.current = data.interviewInfo.startedAt ? new Date(data.interviewInfo.startedAt) : new Date();
+                        startReadingPhase();
+                    } else if (data.interviewInfo.status === 'completed') {
+                        setInterviewState('complete');
+                    } else {
+                        setInterviewState('waiting');
+                        console.log('[SOCKET] ⏳ Interview scheduled, waiting for start');
+                    }
+                }
+            }
+        });
+        
+        socket.on('interview_state_sync', (data) => {
+            console.log('[SOCKET] 🔄 State sync received - questions:', data.questions?.length, 'currentIndex:', data.currentQuestionIndex);
+            if (mountedRef.current) {
+                if (data.participants) {
+                    updateParticipants(data.participants);
+                }
+                
+                if (data.status === 'in_progress') {
+                    interviewStartTimeRef.current = data.startedAt ? new Date(data.startedAt) : null;
+                    // ✅ Step 2 — Update both state and ref
+                    setCurrentQuestionIndex(data.currentQuestionIndex || 0);
+                    currentQuestionIndexRef.current = data.currentQuestionIndex || 0;
+                    startReadingPhase();
+                }
             }
         });
        
         socket.on('user_joined', (data) => {
-            console.log('[SOCKET] User joined:', data);
+            console.log('[SOCKET] 👤 User joined:', data);
             if (mountedRef.current) {
                 setParticipants(prev => {
-                    const exists = prev.some(p => p.userId === data.userId);
-                    return exists ? prev : [...prev, data];
+                    const userId = data.userId;
+                    const exists = prev.some(p => p.userId === userId);
+                    if (exists) return prev;
+                    
+                    const newList = [...prev, {
+                        userId: userId,
+                        userName: data.userName,
+                        userType: data.userType,
+                        joinedAt: data.timestamp
+                    }];
+                    return deduplicateParticipants(newList);
                 });
             }
         });
        
         socket.on('user_left', (data) => {
-            console.log('[SOCKET] User left:', data);
+            console.log('[SOCKET] 🚪 User left:', data);
             if (mountedRef.current) {
                 setParticipants(prev => prev.filter(p => p.userId !== data.userId));
             }
         });
        
         socket.on('participants_list', (data) => {
-            console.log('[SOCKET] Participants update:', data);
+            console.log('[SOCKET] 📋 Participants update:', data);
             if (mountedRef.current) {
-                setParticipants(data.participants || []);
+                updateParticipants(data.participants || []);
             }
         });
-       
+
         socket.on('interview_started', (data) => {
-            console.log('[SOCKET] Interview started event received');
+            console.log('[SOCKET] 🎬 Interview started event received:', data);
             if (mountedRef.current) {
-                fetchInterviewState(interviewId);
-            }
-        });
-       
-        socket.on('next_question', (data) => {
-            console.log('[SOCKET] Next question event received:', data);
-            if (mountedRef.current) {
-                if (data.isComplete) {
-                    console.log('[INTERVIEW] Interview complete');
-                    setInterviewState('complete');
-                    if (timerRef.current) {
-                        clearInterval(timerRef.current);
-                        timerRef.current = null;
+                interviewStartTimeRef.current = data.timestamp ? new Date(data.timestamp) : new Date();
+                // ✅ Step 2 — Update both state and ref
+                setCurrentQuestionIndex(0);
+                currentQuestionIndexRef.current = 0;
+                
+                console.log('[SOCKET] Immediately transitioning to reading phase...');
+                setInterviewState('reading');
+                setAnswer('');
+                currentAnswerRef.current = '';
+                setRecording(false);
+                setTranscribing(false);
+                isSubmittingRef.current = false;
+                
+                // Start reading timer immediately
+                startSyncedTimer(8, () => {
+                    if (mountedRef.current) {
+                        startAnsweringPhase();
                     }
-                    sessionStorage.removeItem('interviewRoomState');
-                } else {
-                    console.log('[INTERVIEW] Moving to question', data.nextIndex);
-                    setCurrentQuestionIndex(data.nextIndex);
-                    startReadingPhase();
-                }
+                }, 'reading');
             }
         });
+        
+        // CRITICAL FIX: Enhanced next_question event handler
+socket.on('next_question', (data) => {
+    console.log('[SOCKET] ➡️ Next question event RECEIVED:', {
+        nextIndex: data.nextIndex,
+        isComplete: data.isComplete,
+        currentRef: currentQuestionIndexRef.current
+    });
+    
+    if (!mountedRef.current) return;
+    
+    // Clear any existing timers FIRST
+    if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+    }
+    
+    if (data.isComplete) {
+        console.log('[SOCKET] 🎉 Interview complete via socket');
+        setInterviewState('complete');
+        setTimeLeft(0);
+        setAnswer('');
+        currentAnswerRef.current = '';
+        return;
+    }
+    
+    const nextIndex = data.nextIndex;
+    console.log('[SOCKET] Moving to question:', nextIndex);
+    
+    // Reset all state immediately
+    isSubmittingRef.current = false;
+    setAnswer('');
+    currentAnswerRef.current = '';
+    setRecording(false);
+    setTranscribing(false);
+    
+    // ✅ Update both state and ref
+    setCurrentQuestionIndex(nextIndex);
+    currentQuestionIndexRef.current = nextIndex;
+    
+    // Start reading phase immediately
+    setInterviewState('reading');
+    setTimeLeft(8);
+    console.log('[SOCKET] Starting reading phase for Q' + (nextIndex + 1));
+    
+    // ✅ CRITICAL FIX: Inline timer logic to avoid stale closures
+    const readingStartTime = Date.now();
+    currentPhaseStartRef.current = readingStartTime;
+    currentPhaseRef.current = 'reading';
+    
+    timerRef.current = setInterval(() => {
+        if (!mountedRef.current || currentPhaseRef.current !== 'reading') {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+            return;
+        }
+        
+        const elapsed = Math.floor((Date.now() - readingStartTime) / 1000);
+        const remaining = Math.max(0, 8 - elapsed);
+        setTimeLeft(remaining);
+        
+        if (remaining <= 0) {
+            console.log('[SOCKET] Reading complete for Q' + (nextIndex + 1));
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+            
+            if (!mountedRef.current) return;
+            
+            // Start answering phase
+            setInterviewState('answering');
+            setTimeLeft(30);
+            console.log('[SOCKET] Starting answering phase for Q' + (nextIndex + 1));
+            
+            const answeringStartTime = Date.now();
+            currentPhaseStartRef.current = answeringStartTime;
+            currentPhaseRef.current = 'answering';
+            
+            timerRef.current = setInterval(() => {
+                if (!mountedRef.current || currentPhaseRef.current !== 'answering') {
+                    clearInterval(timerRef.current);
+                    timerRef.current = null;
+                    return;
+                }
+                
+                const elapsedAnswering = Math.floor((Date.now() - answeringStartTime) / 1000);
+                const remainingAnswering = Math.max(0, 30 - elapsedAnswering);
+                setTimeLeft(remainingAnswering);
+                
+                if (remainingAnswering <= 0) {
+                    console.log('[SOCKET] Auto-submitting answer for Q' + (nextIndex + 1));
+                    clearInterval(timerRef.current);
+                    timerRef.current = null;
+                    
+                    if (mountedRef.current) {
+                        submitAnswer();
+                    }
+                }
+            }, 100);
+        }
+    }, 100);
+});
        
         socket.on('error', (data) => {
-            console.error('[SOCKET] Error:', data);
+            console.error('[SOCKET] ❌ Error:', data);
         });
        
         socket.on('disconnect', (reason) => {
-            console.log('[SOCKET] Disconnected:', reason);
+            console.log('[SOCKET] 🔌 Disconnected:', reason);
+            hasJoinedRef.current = false;
         });
-       
-        socket.on('reconnect', (attemptNumber) => {
-            console.log('[SOCKET] Reconnected after', attemptNumber, 'attempts');
-            socket.emit('join_room', {
-                roomId: roomInfo.roomId,
-                userId: roomInfo.userId,
-                userName: roomInfo.userName,
-                userType: roomInfo.userType,
-            });
-        });
-       
-        socket.on('reconnect_error', (error) => {
-            console.error('[SOCKET] Reconnection error:', error);
-        });
-    };
+    }, [updateParticipants, startReadingPhase, deduplicateParticipants]);
     
-    // Initialize room
+    // SIMPLIFIED: Initialize room
     useEffect(() => {
         const initRoom = async () => {
             if (!interviewId || !user) {
@@ -481,74 +662,59 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
             }
            
             try {
-                const savedState = loadRoomState();
-               
-                const response = await fetch(`${API_BASE}/api/interviews/${interviewId}`);
-                if (!response.ok) throw new Error('Interview not found');
-               
-                const interview = await response.json();
-                if (!interview.room_id) throw new Error('Room not created');
-               
-                const userId = user._id || user.id;
-                let userType = null;
-               
-                if (interview.hr_id === userId) userType = 'hr';
-                else if (interview.candidate_id === userId) userType = 'candidate';
-                else throw new Error('Not authorized');
-               
+                console.log('[INIT] Starting room initialization...');
+                
+                // Get current state first
+                const stateResponse = await fetch(`${API_BASE}/api/interview-rooms/${interviewId}/current-state`);
+                if (!stateResponse.ok) throw new Error('Failed to fetch interview state');
+                
+                const stateData = await stateResponse.json();
+                console.log('[INIT] Current state:', stateData);
+                
                 const roomInfo = {
                     interviewId,
-                    roomId: interview.room_id,
-                    userId,
+                    roomId: `interview_${interviewId}`,
+                    userId: user._id || user.id,
                     userName: user.full_name || user.name || user.email || 'User',
-                    userType,
-                    field: interview.field,
+                    userType: user.role,
+                    field: stateData.field,
                 };
                
                 setRoomData(roomInfo);
-               
-                if (savedState) {
-                    console.log('[INTERVIEW] Restoring saved state');
-                    setQuestions(savedState.questions || []);
-                    setCurrentQuestionIndex(savedState.currentQuestionIndex || 0);
-                    if (savedState.status === 'in_progress') {
-                        setInterviewState('reading');
-                    }
+                setQuestions(stateData.questions || []);
+                // ✅ Step 2 — Update both state and ref on initial load
+                setCurrentQuestionIndex(stateData.current_question_index || 0);
+                currentQuestionIndexRef.current = stateData.current_question_index || 0;
+                
+                if (stateData.status === 'in_progress') {
+                    setInterviewState('reading');
+                } else {
+                    setInterviewState('waiting');
                 }
                
-                await fetchInterviewState(interviewId);
-               
-                const connectWithRetry = () => {
-                    if (mountedRef.current) {
-                        connectSocket(roomInfo);
-                    }
-                };
-               
-                setTimeout(connectWithRetry, 500);
+                // Connect socket
+                console.log('[INIT] Connecting socket...');
+                connectSocket(roomInfo);
                
                 setLoading(false);
+                console.log('[INIT] Room initialization complete');
                
             } catch (err) {
                 console.error('[ERROR] Init error:', err);
-                if (mountedRef.current) {
-                    setError(err.message);
-                    setLoading(false);
-                }
+                setError(err.message);
+                setLoading(false);
             }
         };
        
         initRoom();
-    }, [interviewId, user]);
+    }, [interviewId, user, connectSocket]);
     
     const handleLeaveRoom = () => {
         if (window.confirm('Leave interview?')) {
-            sessionStorage.removeItem('interviewRoomState');
-           
             if (socketRef.current && roomData) {
                 socketRef.current.emit('leave_room', { roomId: roomData.roomId });
                 socketRef.current.disconnect();
             }
-           
             onNavigate(roomData?.userType === 'hr' ? '/schedule-interview' : '/candidate');
         }
     };
@@ -747,8 +913,11 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
                         <h3 className="sidebar-title">Participants ({participants.length})</h3>
                     </div>
                     <div className="sidebar-content">
-                        {participants.map(p => (
-                            <div key={p.userId} className="participant-item">
+                        {participants.map((p, index) => (
+                            <div 
+                                key={`participant-${p.userId}-${index}`}
+                                className="participant-item"
+                            >
                                 <div className="participant-avatar"
                                     style={{
                                         backgroundColor: p.userType === 'hr' ? '#8b5cf6' : '#3b82f6'

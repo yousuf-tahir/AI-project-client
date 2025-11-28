@@ -564,3 +564,4 @@ async def get_current_user(user_id: str | None = None, email: EmailStr | None = 
         error_msg = f"An error occurred fetching current user: {str(e)}"
         print(f"[ERROR] {error_msg}")
         raise HTTPException(status_code=500, detail=error_msg)
+
