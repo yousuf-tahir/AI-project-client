@@ -3,27 +3,27 @@ import "material-icons/iconfont/material-icons.css";
 import "../styles/hrdashboard.css";
 import { API_BASE_URL as API_BASE } from "../../config";
 
-// Attempt to use axios if available; gracefully fallback to fetch
-let axiosRef = null;
-try {
-  // eslint-disable-next-line global-require, import/no-extraneous-dependencies
-  axiosRef = require("axios").default || require("axios");
-} catch (_) {
-  axiosRef = null;
-}
+// Simple HTTP client without credentials (like VoiceRecorder)
+const getAuthHeaders = () => {
+  try {
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+};
 
 const http = {
   async get(url) {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
     console.log(`🌐 GET ${fullUrl}`);
     try {
-      if (axiosRef) {
-        const response = await axiosRef.get(fullUrl, { withCredentials: true });
-        return response.data;
-      }
       const res = await fetch(fullUrl, { 
-        credentials: 'include',
-        headers: { 'Accept': 'application/json' }
+        // No credentials: 'include' - like VoiceRecorder
+        headers: { 
+          'Accept': 'application/json',
+          ...getAuthHeaders()
+        }
       });
       if (!res.ok) {
         const errorText = await res.text();
@@ -35,23 +35,18 @@ const http = {
       throw error;
     }
   },
+
   async post(url, payload) {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
     console.log(`📤 POST ${fullUrl}`, payload);
     try {
-      if (axiosRef) {
-        const response = await axiosRef.post(fullUrl, payload, { 
-          withCredentials: true,
-          headers: { 'Content-Type': 'application/json' }
-        });
-        return response.data;
-      }
       const res = await fetch(fullUrl, { 
         method: 'POST',
-        credentials: 'include',
+        // No credentials: 'include'
         headers: { 
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          ...getAuthHeaders()
         },
         body: JSON.stringify(payload)
       });
@@ -65,23 +60,18 @@ const http = {
       throw error;
     }
   },
+
   async patch(url, payload) {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
     console.log(`🔄 PATCH ${fullUrl}`, payload);
     try {
-      if (axiosRef) {
-        const response = await axiosRef.patch(fullUrl, payload, { 
-          withCredentials: true,
-          headers: { 'Content-Type': 'application/json' }
-        });
-        return response.data;
-      }
       const res = await fetch(fullUrl, { 
         method: 'PATCH',
-        credentials: 'include',
+        // No credentials: 'include'
         headers: { 
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          ...getAuthHeaders()
         },
         body: JSON.stringify(payload)
       });
@@ -104,7 +94,6 @@ function CandidatesApply({ onNavigate }) {
   const hrIdFromQuery = params.get("hrId") || "";
   const candidateIdFromQuery = params.get("candidateId") || "";
   const modeFromQuery = (params.get("mode") || "").toLowerCase();
-  const API_BASE = (import.meta?.env?.VITE_API_BASE) || "http://localhost:8000";
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -114,10 +103,7 @@ function CandidatesApply({ onNavigate }) {
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [appRec, setAppRec] = useState(null);
-  const [viewOpen, setViewOpen] = useState(false);
   const [applications, setApplications] = useState([]);
-  const [certsOpen, setCertsOpen] = useState(false);
-  const [certsList, setCertsList] = useState([]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [modal, setModal] = useState({ open: false, item: null });
@@ -317,7 +303,7 @@ function CandidatesApply({ onNavigate }) {
       setError("");
       
       try {
-        // First, try the specific HR applications endpoint
+        // Simple GET request without credentials - like VoiceRecorder
         const url = `${API_BASE}/api/hr/applications?hr_name=${encodeURIComponent(hrNameResolved)}`;
         const data = await http.get(url);
         
@@ -325,7 +311,7 @@ function CandidatesApply({ onNavigate }) {
         
         const apps = Array.isArray(data) ? data : [];
         setApplications(apps);
-        console.log('Fetched applications:', apps); // Debug log
+        console.log('Fetched applications:', apps);
         
       } catch (err) {
         console.error('Error fetching applications:', err);
@@ -356,43 +342,8 @@ function CandidatesApply({ onNavigate }) {
     });
   }, [applications, query, statusFilter]);
 
-  // Test if API endpoint is accessible
-  async function testApiEndpoint(url) {
-    try {
-      console.log(`🔍 Testing API endpoint: ${url}`);
-      const response = await http.options(url);
-      console.log('✅ API Endpoint Test - Allowed Methods:', response.headers['allow']);
-      return true;
-    } catch (error) {
-      console.error('❌ API Endpoint Test Failed:', {
-        url,
-        error: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText
-      });
-      return false;
-    }
-  }
-
-  // Handle successful API responses
-  const handleSuccessResponse = (response, applicationId, status) => {
-    if (response?.data?.success || response?.data?.updated > 0) {
-      setApplications(prev => 
-        prev.map(a => (a._id === applicationId ? { ...a, status } : a))
-      );
-      setSuccessMsg(`Application ${status.toLowerCase()} successfully!`);
-      setTimeout(() => setSuccessMsg(''), 3000);
-      return true;
-    }
-    return false;
-  };
-
   // Update application status (Accept/Reject)
   async function updateStatus(item, status) {
-    console.log('🔵 API Base URL:', API_BASE);
-    console.log('🔍 Full Item data:', JSON.stringify(item, null, 2));
-    console.log('🔍 Current user HR name:', hrNameResolved || hrName);
-    
     const endpoint = `${API_BASE}/api/hr/update-status`;
     const applicationId = item._id || item.id;
     
@@ -405,13 +356,11 @@ function CandidatesApply({ onNavigate }) {
       setSubmitting(true);
       setError('');
       
-      // Get all possible field names that might be in the database
       const candidateId = item.candidate_id || item.candidateId || item.user?._id;
       const candidateEmail = (item.email || item.candidate_email || item.user?.email || '').toLowerCase().trim();
       const hrName = item.hr_name || item.postedBy?.name || hrNameResolved || hrName || '';
       const jobId = item.job_id || item.job?._id || item.jobId || '';
       
-      // Create payload with all possible identifiers
       const payload = {
         candidate_id: candidateId,
         candidate_email: candidateEmail,
@@ -420,162 +369,33 @@ function CandidatesApply({ onNavigate }) {
         status: status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
       };
       
-      // Log all available fields from the item for debugging
-      console.log('🔍 All available fields in the item:', {
-        itemKeys: Object.keys(item),
-        item: {
-          ...item,
-          job: item.job ? { _id: item.job._id, title: item.job.title } : null,
-          user: item.user ? { _id: item.user._id, email: item.user.email } : null
-        }
-      });
-      
-      console.log('🔍 Database query will use:', {
-        candidate_id: payload.candidate_id,
-        candidate_email: payload.candidate_email,
-        hr_name: payload.hr_name,
-        job_id: payload.job_id
-      });
-      
       console.log('📤 Sending update request to:', endpoint);
       console.log('📦 Payload:', JSON.stringify(payload, null, 2));
       
-      try {
-        console.log('🔄 Attempting PATCH request...');
-        console.log('🔍 Payload being sent:', JSON.stringify(payload, null, 2));
-        
-        // Add a test request to check CORS and endpoint accessibility
-        try {
-          const testResponse = await fetch(endpoint, {
-            method: 'OPTIONS',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            }
-          });
-          console.log('🔍 Test OPTIONS response:', {
-            status: testResponse.status,
-            statusText: testResponse.statusText,
-            headers: Object.fromEntries(testResponse.headers.entries())
-          });
-        } catch (testError) {
-          console.warn('⚠️ OPTIONS test request failed:', testError);
-        }
-        
-        // Make the actual PATCH request
-        const response = await http.patch(endpoint, payload);
-        
-        console.log('✅ Response received:', {
-          status: response?.status,
-          data: response,
-          keys: response ? Object.keys(response) : []
-        });
-        
-        // Check for successful update in different response formats
-        if (response?.success || 
-            response?.updated > 0 || 
-            response?.data?.success || 
-            response?.data?.updated > 0 ||
-            (response && 'updated' in response) ||
-            (response?.data && 'updated' in response.data)) {
-          // Update local state
-          setApplications(prev => 
-            prev.map(a => (a._id === applicationId ? { ...a, status } : a))
-          );
-          setSuccessMsg(`Application ${status.toLowerCase()} successfully!`);
-          setTimeout(() => setSuccessMsg(''), 3000);
-          return;
-        }
-        
-        throw new Error(`Update was not successful. Response: ${JSON.stringify(response?.data)}`);
-        
-      } catch (patchError) {
-        console.warn('⚠️ PATCH failed, trying POST as fallback');
-        console.error('PATCH error details:', {
-          message: patchError.message,
-          status: patchError.response?.status,
-          data: patchError.response?.data,
-          config: {
-            url: patchError.config?.url,
-            method: patchError.config?.method,
-            data: patchError.config?.data
-          }
-        });
-        
-        // Try with POST as fallback
-        try {
-          console.log('🔄 Attempting POST with PATCH override...');
-          const postResponse = await http.post(endpoint, {
-            ...payload,
-            _method: 'PATCH' // Some APIs support this for POST to PATCH
-          }, {
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'X-HTTP-Method-Override': 'PATCH'
-            },
-            withCredentials: true
-          });
-          
-          console.log('✅ POST-as-PATCH response status:', postResponse?.status);
-          console.log('📨 POST-as-PATCH response data:', postResponse?.data);
-          
-          if (postResponse?.data?.success || postResponse?.data?.updated > 0) {
-            // Update local state
-            setApplications(prev => 
-              prev.map(a => (a._id === applicationId ? { ...a, status } : a))
-            );
-            setSuccessMsg(`Application ${status.toLowerCase()} successfully!`);
-            setTimeout(() => setSuccessMsg(''), 3000);
-            return;
-          }
-          
-          throw new Error(`POST-as-PATCH was not successful. Response: ${JSON.stringify(postResponse?.data)}`);
-          
-        } catch (postError) {
-          console.error('❌ POST-as-PATCH failed with error:', {
-            message: postError.message,
-            status: postError.response?.status,
-            data: postError.response?.data,
-            config: {
-              url: postError.config?.url,
-              method: postError.config?.method,
-              data: postError.config?.data
-            }
-          });
-          
-          // Check for common issues
-          if (postError.response?.status === 401) {
-            throw new Error('Authentication failed. Please log in again.');
-          } else if (postError.response?.status === 403) {
-            throw new Error('You do not have permission to update this application.');
-          } else if (postError.response?.status === 404) {
-            throw new Error('The application could not be found. It may have been deleted.');
-          } else if (postError.response?.status === 500) {
-            throw new Error('Server error. Please try again later.');
-          } else if (!navigator.onLine) {
-            throw new Error('Network error. Please check your internet connection.');
-          }
-          
-          throw new Error('Failed to update application. Please check the console for details.');
-        }
+      // Simple PATCH request without credentials - like VoiceRecorder
+      const response = await http.patch(endpoint, payload);
+      
+      console.log('✅ Response received:', response);
+      
+      if (response?.success || response?.updated > 0) {
+        setApplications(prev => 
+          prev.map(a => (a._id === applicationId ? { ...a, status } : a))
+        );
+        setSuccessMsg(`Application ${status.toLowerCase()} successfully!`);
+        setTimeout(() => setSuccessMsg(''), 3000);
+        return;
       }
       
-    } catch (error) {
-      console.error('❌ Update failed with error:', {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data
-      });
+      throw new Error(`Update was not successful. Response: ${JSON.stringify(response)}`);
       
-      setError(error.response?.data?.message || error.message || 'Failed to update application status');
+    } catch (error) {
+      console.error('❌ Update failed with error:', error);
+      setError(error.message || 'Failed to update application status');
       setTimeout(() => setError(''), 10000);
     } finally {
       setSubmitting(false);
     }
   }
-      
-  // Removed duplicate error handling code that was causing syntax errors
 
   // Robust fetch for HR applications: try multiple endpoints
   const fetchApplicationsForHR = async (nameRaw) => {
@@ -662,21 +482,6 @@ function CandidatesApply({ onNavigate }) {
     } catch {}
   }, [applications, appRec, candidate, userRole, modeFromQuery]);
 
-  const updateStatusRemote = async (candidateEmail, newStatus) => {
-    try {
-      setSubmitting(true);
-      setSuccessMsg("");
-      setError("");
-      await http.patch(`${API_BASE}/api/hr/update-status`, { candidate_email: candidateEmail, status: newStatus });
-      setApplications(prev => (Array.isArray(prev) ? prev.map(x => x.email === candidateEmail ? { ...x, status: newStatus } : x) : prev));
-      setSuccessMsg(`Status updated to ${newStatus}.`);
-    } catch (e) {
-      setError(e?.message || "Failed to update status");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleApply = async () => {
     try {
       setSubmitting(true);
@@ -695,40 +500,6 @@ function CandidatesApply({ onNavigate }) {
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const updateLocalApplicationStatus = (newStatus) => {
-    try {
-      const raw = localStorage.getItem('applications');
-      const arr = raw ? JSON.parse(raw) : [];
-      const effectiveJob = jobId || appRec?.job_id || job?._id || job?.id || '';
-      const keyMatch = (x) => String(x.candidate_id) === String(candidateId) && String(x.job_id) === String(effectiveJob);
-      let found = false;
-      arr.forEach(x => { if (keyMatch(x)) { x.status = newStatus; found = true; } });
-      if (!found) {
-        // create a minimal record if not exists
-        arr.push({
-          candidate_id: candidateId,
-          job_id: effectiveJob,
-          status: newStatus,
-          candidate_name: candidate?.full_name || candidate?.name || appRec?.candidate_name,
-          candidate_email: candidate?.email || appRec?.candidate_email,
-          job_title: job?.job_title || job?.title || appRec?.job_title,
-          hr_name: hrName,
-          hr_id: hrIdFromQuery || job?.hr_id || job?.user_id || job?.owner_id || job?.hr?._id || job?.hr?.id
-        });
-      }
-      localStorage.setItem('applications', JSON.stringify(arr));
-    } catch {}
-  };
-
-  const handleAccept = () => {
-    updateLocalApplicationStatus('Accepted');
-    setSuccessMsg('Application marked as Accepted.');
-  };
-  const handleReject = () => {
-    updateLocalApplicationStatus('Rejected');
-    setSuccessMsg('Application marked as Rejected.');
   };
 
   // Basic render helpers
@@ -795,6 +566,10 @@ function CandidatesApply({ onNavigate }) {
               <div style={{ marginBottom: 16, padding: 12, background: 'rgba(220,38,38,0.08)', color: '#991b1b', borderRadius: 8, fontWeight: 600 }}>{error}</div>
             )}
 
+            {successMsg && (
+              <div style={{ marginBottom: 16, padding: 12, background: 'rgba(34,197,94,0.08)', color: '#166534', borderRadius: 8, fontWeight: 600 }}>{successMsg}</div>
+            )}
+
             {loading ? (
               <div style={{ padding: 24 }}>Loading...</div>
             ) : filtered.length === 0 ? (
@@ -847,8 +622,20 @@ function CandidatesApply({ onNavigate }) {
                           <td style={{ padding: '12px 14px', textAlign: 'left', borderBottom: '1px solid #eee', fontSize: 14, color: '#111827' }}>
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                               <button style={{ padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600, background: '#e5e7eb', color: '#111827' }} onClick={() => setModal({ open: true, item: a })}>View Profile</button>
-                              <button style={{ padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600, background: '#dcfce7', color: '#166534' }} onClick={() => updateStatus(a, 'Accepted')}>Accept</button>
-                              <button style={{ padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600, background: '#fee2e2', color: '#991b1b' }} onClick={() => updateStatus(a, 'Rejected')}>Reject</button>
+                              <button 
+                                style={{ padding: '8px 12px', borderRadius: 8, border: 'none', cursor: submitting ? 'not-allowed' : 'pointer', fontWeight: 600, background: '#dcfce7', color: '#166534', opacity: submitting ? 0.6 : 1 }} 
+                                onClick={() => updateStatus(a, 'Accepted')}
+                                disabled={submitting}
+                              >
+                                {submitting ? 'Updating...' : 'Accept'}
+                              </button>
+                              <button 
+                                style={{ padding: '8px 12px', borderRadius: 8, border: 'none', cursor: submitting ? 'not-allowed' : 'pointer', fontWeight: 600, background: '#fee2e2', color: '#991b1b', opacity: submitting ? 0.6 : 1 }} 
+                                onClick={() => updateStatus(a, 'Rejected')}
+                                disabled={submitting}
+                              >
+                                {submitting ? 'Updating...' : 'Reject'}
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -906,4 +693,3 @@ function CandidatesApply({ onNavigate }) {
 }
 
 export default CandidatesApply;
-

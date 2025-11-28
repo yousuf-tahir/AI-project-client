@@ -209,29 +209,57 @@ async def update_status(body: UpdateStatus):
         new_status = body.status.strip().capitalize()
         if new_status not in {"Pending", "Accepted", "Rejected"}:
             raise HTTPException(status_code=400, detail="Invalid status")
+        
         db = await Database.get_db()
         apps_col = db["applications"]
+        
+        # Build query to find the application
         query: Dict[str, Any] = {}
+        
+        # First, try to find by candidate_email by looking up in profiles
         if body.candidate_email:
-            query["candidate_email"] = body.candidate_email
+            # Look up candidate_id from profiles collection using email
+            profiles_col = db["profiles"]
+            profile = await profiles_col.find_one(
+                {"email": body.candidate_email}, 
+                {"user_id": 1}
+            )
+            if profile and profile.get("user_id"):
+                query["candidate_id"] = str(profile["user_id"])
+            else:
+                # If no profile found with that email, try direct match (case-insensitive)
+                query["candidate_email"] = {"$regex": f"^{re.escape(body.candidate_email)}$", "$options": "i"}
+        
+        # If candidate_id is provided or we found it from email lookup
         elif body.candidate_id:
             query["candidate_id"] = body.candidate_id
         else:
             raise HTTPException(status_code=400, detail="candidate_email or candidate_id is required")
 
+        # Add HR name filter (case-insensitive)
         if body.hr_name:
-            # Match hr_name case-insensitively
             query["hr_name"] = {"$regex": f"^{re.escape(body.hr_name)}$", "$options": "i"}
+        
+        # Add job_id filter if provided
         if body.job_id:
             query["job_id"] = body.job_id
 
+        print(f"🔍 Update query: {query}")  # Debug logging
+        
+        # Update the application
         res = await apps_col.update_many(query, {"$set": {"status": new_status}})
+        
+        print(f"📊 Update result: matched={res.matched_count}, modified={res.modified_count}")  # Debug logging
+        
+        if res.matched_count == 0:
+            raise HTTPException(status_code=404, detail="No matching application found")
+            
         return {"updated": res.modified_count}
+        
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app_router.post("/applications")
 async def create_application(body: ApplicationCreate):

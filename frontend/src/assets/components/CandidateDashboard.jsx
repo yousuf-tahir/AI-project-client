@@ -76,9 +76,10 @@ const CandidateDashboard = ({ onNavigate }) => {
 
   return (
     <div className="candidate-dashboard-layout">
-      <aside className={`candidate-sidebar${sidebarActive ? ' active' : ''}`}>
+      {/* Fixed Sidebar - same structure as CandidateJobs */}
+      <aside className="candidate-sidebar">
         <div className="sidebar-header">
-          <span className="app-logo-candidate">Candidate</span>
+          <span className="app-logo-candidate">Candidate</span> 
         </div>
         <nav className="sidebar-nav">
           <ul>
@@ -95,6 +96,12 @@ const CandidateDashboard = ({ onNavigate }) => {
               </a>
             </li>
             <li className="nav-item">
+              <a href="#" onClick={(e) => { e.preventDefault(); go('/profile'); }}>
+                <span className="material-icons-outlined">account_circle</span>
+                <span className="nav-label">My Profile</span>
+              </a>
+            </li>
+            <li className="nav-item">
               <a href="#" onClick={(e) => { e.preventDefault(); go('/interview'); }}>
                 <span className="material-icons-outlined">event_note</span>
                 <span className="nav-label">My Interviews</span>
@@ -106,21 +113,46 @@ const CandidateDashboard = ({ onNavigate }) => {
                 <span className="nav-label">Practice Interview</span>
               </a>
             </li>
+            <li className="nav-item">
+              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-feedback'); }}>
+                <span className="material-icons-outlined">rate_review</span>
+                <span className="nav-label">Feedback</span>
+              </a>
+            </li>
+            <li className="nav-item">
+              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-notifications'); }}>
+                <span className="material-icons-outlined">notifications</span>
+                <span className="nav-label">Notifications</span>
+              </a>
+            </li>
           </ul>
         </nav>
         <div className="sidebar-footer">
           <ul>
             <li className="nav-item">
-              <a href="#" onClick={(e) => {
-                e.preventDefault();
-                if (window.confirm('Are you sure you want to logout?')) {
+              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-settings'); }}>
+                <span className="material-icons-outlined">settings</span>
+                <span className="nav-label">Settings</span>
+              </a>
+            </li>
+            <li className="nav-item">
+              <a
+                href="#"
+                id="logout-link"
+                className="logout-link"
+                onClick={(e) => {
+                  e.preventDefault();
+                  const ok = window.confirm('Are you sure you want to logout?');
+                  if (!ok) return;
                   try {
-                    localStorage.clear();
-                    sessionStorage.clear();
-                  } catch {}
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('token');
+                    sessionStorage.removeItem('user');
+                    sessionStorage.removeItem('token');
+                  } catch (_) {}
                   window.location.replace('/');
-                }
-              }}>
+                }}
+              >
                 <span className="material-icons-outlined">logout</span>
                 <span className="nav-label">Logout</span>
               </a>

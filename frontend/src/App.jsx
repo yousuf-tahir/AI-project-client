@@ -159,6 +159,10 @@ function App() {
     switch (pathOnly) {
       case '/home':
         return <Home />;
+      case '/set-criteria': // ADDED: Set Criteria route
+        return (user?.role?.toLowerCase() === 'hr' || user?.role?.toLowerCase() === 'admin')
+          ? <SetCriteriaWithErrorBoundary onNavigate={navigate} user={user} />
+          : <div>Unauthorized: HR/Admin access required</div>;
       case '/job-display':
         if (user?.role?.toLowerCase() === 'hr' || user?.role?.toLowerCase() === 'admin') {
           return <JobDisplayWithErrorBoundary onNavigate={navigate} user={user} />;
@@ -259,7 +263,7 @@ function App() {
   const pathNoQuery = (currentPath || '').split('?')[0];
   const isPublicRoute = ['/', '/register'].includes(pathNoQuery) || pathNoQuery.startsWith('/public/');
   const shouldHideNavbar =
-    pathNoQuery.startsWith('/set-criteria') ||
+    pathNoQuery.startsWith('/set-criteria') || // ADDED: Hide navbar for set-criteria
     pathNoQuery === '/job-display' ||
     pathNoQuery === '/hr-profile' ||
     pathNoQuery === '/hr' ||

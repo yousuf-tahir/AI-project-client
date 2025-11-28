@@ -428,3 +428,18 @@ async def delete_job_criteria(criteria_id: str):
     # Note: We're not deleting the skills as they might be referenced by other criteria
     
     return {"message": "Job criteria deleted successfully"}
+
+@router.get("/api/skills/", response_model=List[Skill])
+async def list_skills():
+    try:
+        db = await Database.get_db()
+        skills = []
+        async for skill in db["skills"].find().sort("name", ASCENDING):
+            skill["id"] = str(skill.pop("_id"))
+            skills.append(skill)
+        return skills
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while fetching skills: {str(e)}"
+        )

@@ -764,192 +764,189 @@ socket.on('next_question', (data) => {
     const currentQuestion = questions[currentQuestionIndex];
     const isHR = roomData?.userType === 'hr';
     
-    return (
-        <div className="interview-container">
-            <header className="interview-header">
-                <div className="header-left">
-                    <h1 className="header-title">
-                        Interview - {roomData?.field?.replace(/_/g, ' ').toUpperCase()}
-                    </h1>
-                    <div className="status-indicator">
-                        <div className="status-dot"></div>
-                        <span>
-                            {interviewState === 'complete' 
-                                ? 'Completed' 
-                                : interviewState === 'waiting' 
-                                ? 'Waiting' 
-                                : 'Live'}
-                        </span>
-                    </div>
-                </div>
-            </header>
-            
-            <div className="main-content">
-                <div className="question-area">
-                    {interviewState === 'waiting' && (
-                        <div className="status-card">
-                            <div className="status-icon">⏳</div>
-                            <div className="status-title">
-                                {isHR ? 'Ready to Start?' : 'Waiting for HR'}
-                            </div>
-                            <div className="status-message">
-                                {isHR
-                                    ? `${participants.length} participant(s) in the room. Click Start when ready.`
-                                    : 'HR will start the interview shortly...'
-                                }
-                            </div>
-                            {isHR && (
-                                <button
-                                    className="start-button"
-                                    onClick={handleStartInterview}
-                                >
-                                    <span>▶️</span>
-                                    Start Interview
-                                </button>
-                            )}
-                        </div>
-                    )}
-                    
-                    {interviewState === 'complete' && (
-                        <div className="status-card">
-                            <div className="status-icon">✅</div>
-                            <div className="status-title">Interview Complete!</div>
-                            <div className="status-message">
-                                All {questions.length} questions have been answered.
-                                {isHR && ' You can review the responses in the dashboard.'}
-                            </div>
-                        </div>
-                    )}
-                    
-                    {(interviewState === 'reading' || interviewState === 'answering') && currentQuestion && (
-                        <>
-                            <div className="question-card">
-                                <div className="question-header">
-                                    <div className="question-number">
-                                        Question {currentQuestionIndex + 1} of {questions.length}
-                                    </div>
-                                    <div className="question-meta">
-                                        <span className={`badge ${getDifficultyStyle(currentQuestion.difficulty)}`}>
-                                            {currentQuestion.difficulty}
-                                        </span>
-                                        <span className="badge" style={{ backgroundColor: '#3b82f620', color: '#3b82f6' }}>
-                                            {currentQuestion.type}
-                                        </span>
-                                    </div>
-                                </div>
-                                
-                                <div className="question-text">
-                                    {currentQuestion.text}
-                                </div>
-                                
-                                <div className="timer-section">
-                                    <div className="timer-label">
-                                        {interviewState === 'reading' ? 'Reading Time' : 'Time Remaining'}
-                                    </div>
-                                    <div className={`timer-display ${getTimerColor()}`}>
-                                        {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
-                                    </div>
-                                    <div className="progress-bar">
-                                        <div className="progress-fill"
-                                            style={{
-                                                width: `${(timeLeft / (interviewState === 'reading' ? 8 : 30)) * 100}%`,
-                                                backgroundColor: timeLeft <= 5 ? '#ef4444' : '#10b981'
-                                            }} />
-                                    </div>
-                                </div>
-                                
-                                {interviewState === 'answering' && !isHR && (
-                                    <div className="answer-section">
-                                        <div className="answer-label">Your Answer:</div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                                            <button
-                                                onClick={recording ? stopRecording : startRecording}
-                                                disabled={transcribing || timeLeft <= 5}
-                                                className={`recording-button ${recording ? 'stop-recording-button' : 'start-recording-button'}`}
-                                                style={{
-                                                    opacity: (transcribing || timeLeft <= 5) ? 0.5 : 1,
-                                                    cursor: (transcribing || timeLeft <= 5) ? 'not-allowed' : 'pointer'
-                                                }}
-                                            >
-                                                {recording ? 'Stop Recording' : 'Start Recording'} 🎙️
-                                            </button>
-                                            {recording && (
-                                                <div className="recording-status">
-                                                    ● Recording... (Timer: {timeLeft}s)
-                                                </div>
-                                            )}
-                                            {transcribing && (
-                                                <div className="transcribing-status">
-                                                    ⏳ Transcribing... (Please wait)
-                                                </div>
-                                            )}
-                                        </div>
-                                        <textarea
-                                            className="answer-input"
-                                            value={answer}
-                                            onChange={(e) => setAnswer(e.target.value)}
-                                            placeholder="Start recording or type your answer here..."
-                                            disabled={transcribing}
-                                            rows={4}
-                                        />
-                                        <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginTop: '0.5rem' }}>
-                                            Time remaining: {timeLeft} seconds | Current answer length: {answer.length} chars
-                                        </div>
-                                    </div>
-                                )}
-                                
-                                {interviewState === 'answering' && isHR && (
-                                    <div className="status-message" style={{ textAlign: 'center', padding: '1rem' }}>
-                                        Candidate is answering...
-                                    </div>
-                                )}
-                            </div>
-                        </>
-                    )}
-                </div>
-                
-                <aside className="sidebar">
-                    <div className="sidebar-header">
-                        <h3 className="sidebar-title">Participants ({participants.length})</h3>
-                    </div>
-                    <div className="sidebar-content">
-                        {participants.map((p, index) => (
-                            <div 
-                                key={`participant-${p.userId}-${index}`}
-                                className="participant-item"
-                            >
-                                <div className="participant-avatar"
-                                    style={{
-                                        backgroundColor: p.userType === 'hr' ? '#8b5cf6' : '#3b82f6'
-                                    }}>
-                                    {getInitials(p.userName)}
-                                </div>
-                                <div className="participant-info">
-                                    <div className="participant-name">{p.userName}</div>
-                                    <div className="participant-type">{p.userType}</div>
-                                </div>
-                            </div>
-                        ))}
-                        {participants.length === 0 && (
-                            <div style={{ color: '#94a3b8', fontSize: '0.875rem', textAlign: 'center', padding: '1rem' }}>
-                                No participants yet
-                            </div>
-                        )}
-                    </div>
-                </aside>
-            </div>
-            
-            <div className="controls">
-                <button 
-                    className="control-button leave-button" 
-                    onClick={handleLeaveRoom} 
-                    title="Leave"
-                >
-                    📞
-                </button>
-            </div>
+return (
+    <div className="interview-room-page"> 
+    <header className="interview-header">
+      <div className="header-left">
+        <h1 className="header-title">
+          {roomData?.field?.replace(/_/g, ' ').toUpperCase()} Interview
+        </h1>
+        <div className="status-indicator">
+          <div className="status-dot"></div>
+          <span>
+            {interviewState === 'complete' 
+              ? 'Completed' 
+              : interviewState === 'waiting' 
+              ? 'Waiting' 
+              : 'Live'}
+          </span>
         </div>
-    );
+      </div>
+    </header>
+    
+    <div className="main-content">
+      <div className="content-wrapper">
+        {/* Question Area */}
+        <div className="question-area">
+          {interviewState === 'waiting' && (
+            <div className="status-card">
+              <div className="status-icon">⏳</div>
+              <div className="status-title">
+                {isHR ? 'Ready to Start?' : 'Waiting for HR'}
+              </div>
+              <div className="status-message">
+                {isHR
+                  ? `${participants.length} participant(s) in the room. Click Start when ready.`
+                  : 'HR will start the interview shortly. Please wait...'}
+              </div>
+              {isHR && (
+                <button className="start-button" onClick={handleStartInterview}>
+                  <span>▶️</span>
+                  Start Interview
+                </button>
+              )}
+            </div>
+          )}
+          
+          {interviewState === 'complete' && (
+            <div className="status-card">
+              <div className="status-icon">✅</div>
+              <div className="status-title">Interview Complete!</div>
+              <div className="status-message">
+                All {questions.length} questions have been answered successfully.
+                {isHR && ' You can review responses in your dashboard.'}
+              </div>
+            </div>
+          )}
+          
+          {(interviewState === 'reading' || interviewState === 'answering') && currentQuestion && (
+            <div className="question-card">
+              <div className="question-header">
+                <div className="question-number">
+                  Question {currentQuestionIndex + 1} of {questions.length}
+                </div>
+                <div className="question-meta">
+                  <span className={`badge ${getDifficultyStyle(currentQuestion.difficulty)}`}>
+                    {currentQuestion.difficulty}
+                  </span>
+                  <span className="badge type-badge">
+                    {currentQuestion.type}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="question-text">
+                {currentQuestion.text}
+              </div>
+              
+              <div className="timer-section">
+                <div className="timer-label">
+                  {interviewState === 'reading' ? 'Reading Time' : 'Time Remaining'}
+                </div>
+                <div className={`timer-display ${getTimerColor()}`}>
+                  {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+                </div>
+                <div className="progress-bar">
+                  <div 
+                    className="progress-fill"
+                    style={{
+                      width: `${(timeLeft / (interviewState === 'reading' ? 8 : 30)) * 100}%`
+                    }} 
+                  />
+                </div>
+              </div>
+              
+              {interviewState === 'answering' && !isHR && (
+                <div className="answer-section">
+                  <div className="answer-label">Your Answer:</div>
+                  <div className="recording-controls">
+                    <button
+                      onClick={recording ? stopRecording : startRecording}
+                      disabled={transcribing || timeLeft <= 5}
+                      className={`recording-button ${recording ? 'stop-recording-button' : 'start-recording-button'}`}
+                    >
+                      {recording ? '⏹️ Stop Recording' : '🎙️ Start Recording'}
+                    </button>
+                    {recording && (
+                      <div className="recording-status">
+                        ● Recording in progress...
+                      </div>
+                    )}
+                    {transcribing && (
+                      <div className="transcribing-status">
+                        ⏳ Transcribing audio...
+                      </div>
+                    )}
+                  </div>
+                  <textarea
+                    className="answer-input"
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    placeholder="Start recording or type your answer here..."
+                    disabled={transcribing}
+                    rows={6}
+                  />
+                  <div className="answer-stats">
+                    <span>Time left: {timeLeft}s</span>
+                    <span>{answer.length} characters</span>
+                  </div>
+                </div>
+              )}
+              
+              {interviewState === 'answering' && isHR && (
+                <div className="hr-view-message">
+                  <div className="hr-icon">👁️</div>
+                  <div className="hr-text">Candidate is answering the question...</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        
+        {/* Participants Sidebar */}
+        <aside className="sidebar">
+          <div className="sidebar-header">
+            <h3 className="sidebar-title">Participants ({participants.length})</h3>
+          </div>
+          <div className="participants-list">
+            {participants.length > 0 ? (
+              participants.map((p, index) => (
+                <div 
+                  key={`participant-${p.userId}-${index}`}
+                  className="participant-item"
+                >
+                  <div className={`participant-avatar ${p.userType === 'hr' ? 'hr' : 'candidate'}`}>
+                    {getInitials(p.userName)}
+                    <div className="participant-status"></div>
+                  </div>
+                  <div className="participant-info">
+                    <div className="participant-name">{p.userName}</div>
+                    <div className="participant-type">{p.userType.toUpperCase()}</div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="no-participants">
+                <div className="no-participants-icon">👥</div>
+                <div>No participants yet</div>
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
+    </div>
+    
+    <div className="controls">
+      <button 
+        className="control-button leave-button" 
+        onClick={handleLeaveRoom} 
+        title="Leave Interview"
+      >
+        📞 Leave
+      </button>
+    </div>
+  </div>
+);
 };
 
 export default InterviewRoom;

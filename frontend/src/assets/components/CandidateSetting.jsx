@@ -152,7 +152,7 @@ const CandidateSetting = ({ onNavigate }) => {
       {/* Sidebar (same as CandidateDashboard) */}
       <aside className="candidate-sidebar">
         <div className="sidebar-header">
-          <span className="app-logo-candidate">App</span> Recruit
+          <span className="app-logo-candidate">Candidate</span> 
         </div>
         <nav className="sidebar-nav">
           <ul>

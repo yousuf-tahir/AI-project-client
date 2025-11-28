@@ -25,7 +25,7 @@ const HrDashboard = ({ onNavigate }) => {
     try {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
       console.log('Fetching interview count from:', `${API_BASE}/api/interviews/count/hr`);
-      
+
       const response = await fetch(`${API_BASE}/api/interviews/count/hr`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -42,11 +42,11 @@ const HrDashboard = ({ onNavigate }) => {
 
       const data = await response.json();
       console.log('Interview count response:', data);
-      
+
       // Use the correct property from the response
       const count = data.hr_interviews_count || data.alt_hr_count || data.total_interviews || 0;
       setInterviewCount(count);
-      
+
     } catch (error) {
       console.error('Error in fetchInterviewCount:', error);
       // Set to a negative number to indicate error state
@@ -59,7 +59,7 @@ const HrDashboard = ({ onNavigate }) => {
     try {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
       console.log('Fetching candidate count from:', `${API_BASE}/api/admin/candidates/count`);
-      
+
       const response = await fetch(`${API_BASE}/api/admin/candidates/count`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -67,16 +67,16 @@ const HrDashboard = ({ onNavigate }) => {
           'Accept': 'application/json'
         }
       });
-      
+
       console.log('Response status:', response.status);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const data = await response.json();
       console.log('Candidate count data:', data);
-      
+
       // Set the total candidate count
       setCandidateCount(data.total || 0);
     } catch (error) {
@@ -90,7 +90,7 @@ const HrDashboard = ({ onNavigate }) => {
     try {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
       console.log('Fetching feedback count from:', `${API_BASE}/api/feedback/count`);
-      
+
       const response = await fetch(`${API_BASE}/api/feedback/count`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -107,10 +107,10 @@ const HrDashboard = ({ onNavigate }) => {
 
       const data = await response.json();
       console.log('Feedback count response:', data);
-      
+
       // Set the total feedback count
       setFeedbackCount(data.total_feedback || 0);
-      
+
     } catch (error) {
       console.error('Error in fetchFeedbackCount:', error);
       // Set to a negative number to indicate error state
@@ -247,15 +247,7 @@ const HrDashboard = ({ onNavigate }) => {
                 <span className="nav-label">Job Display</span>
               </a>
             </li>
-           <li className="nav-item">
-  <a href="#" onClick={(e) => { 
-    e.preventDefault(); 
-    onNavigate('/voice-recorder');
-  }}>
-    <span className="material-icons-outlined">mic</span>
-    <span className="nav-label">Interview</span>
-  </a>
-</li>
+          
             <li className="nav-item">
               <a href="#" onClick={(e) => go("/candidates-apply", e)}>
                 <span className="material-icons-outlined">how_to_reg</span>
@@ -275,7 +267,7 @@ const HrDashboard = ({ onNavigate }) => {
               </a>
             </li>
             <li className="nav-item">
-            <a href="#" onClick={(e) => { e.preventDefault(); onNavigate && onNavigate('/schedule-interview'); }}>
+              <a href="#" onClick={(e) => { e.preventDefault(); onNavigate && onNavigate('/schedule-interview'); }}>
                 <span className="material-icons-outlined">event</span>
                 <span className="nav-label">Schedule Interviews</span>
               </a>
@@ -303,7 +295,7 @@ const HrDashboard = ({ onNavigate }) => {
               </a>
             </li>
             <li className="nav-item">
-              <a href="#" id="logout-link" className="logout-link" onClick={(e) => { e.preventDefault(); const ok = window.confirm('Are you sure you want to logout?'); if (!ok) return; try { localStorage.removeItem('user'); localStorage.removeItem('token'); localStorage.removeItem('email'); localStorage.removeItem('user_id'); localStorage.removeItem('full_name'); sessionStorage.removeItem('user'); sessionStorage.removeItem('token'); sessionStorage.removeItem('email'); sessionStorage.removeItem('user_id'); sessionStorage.removeItem('full_name'); } catch(_){} window.location.replace('/'); }}>
+              <a href="#" id="logout-link" className="logout-link" onClick={(e) => { e.preventDefault(); const ok = window.confirm('Are you sure you want to logout?'); if (!ok) return; try { localStorage.removeItem('user'); localStorage.removeItem('token'); localStorage.removeItem('email'); localStorage.removeItem('user_id'); localStorage.removeItem('full_name'); sessionStorage.removeItem('user'); sessionStorage.removeItem('token'); sessionStorage.removeItem('email'); sessionStorage.removeItem('user_id'); sessionStorage.removeItem('full_name'); } catch (_) { } window.location.replace('/'); }}>
                 <span className="material-icons-outlined">logout</span>
                 <span className="nav-label">Logout</span>
               </a>
@@ -337,9 +329,9 @@ const HrDashboard = ({ onNavigate }) => {
                   try {
                     // Resolve user id from storage again
                     const raw = (typeof localStorage !== 'undefined' && localStorage.getItem('user')) ||
-                                (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('user'));
+                      (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('user'));
                     let uid = null;
-                    try { uid = raw ? (JSON.parse(raw)._id || JSON.parse(raw).id || JSON.parse(raw).user_id) : null; } catch {}
+                    try { uid = raw ? (JSON.parse(raw)._id || JSON.parse(raw).id || JSON.parse(raw).user_id) : null; } catch { }
                     const resolvedId = uid || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('user_id')) || (typeof localStorage !== 'undefined' && localStorage.getItem('user_id'));
                     if (!resolvedId) return;
 
