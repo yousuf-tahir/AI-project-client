@@ -34,7 +34,29 @@ from routes import interview_rooms
 # Import socket handlers
 from socket_handlers import setup_socket_handlers
 
+# ✅ CRITICAL: Load .env FIRST before anything else
 load_dotenv()
+
+# ✅ Check API keys on startup
+print("\n" + "="*80)
+print("🔑 CHECKING API KEYS")
+print("="*80)
+
+openai_key = os.getenv("OPENAI_API_KEY")
+groq_key = os.getenv("GROQ_API_KEY")
+
+if openai_key:
+    print(f"✅ OPENAI_API_KEY found: {openai_key[:20]}... (for Whisper)")
+else:
+    print("⚠️ OPENAI_API_KEY not found (Whisper transcription will fail)")
+
+if groq_key:
+    print(f"✅ GROQ_API_KEY found: {groq_key[:20]}... (for AI questions - FREE!)")
+else:
+    print("❌ GROQ_API_KEY not found - AI question generation will NOT work!")
+    print("   Add GROQ_API_KEY to your .env file")
+
+print("="*80 + "\n")
 
 # ====================================================
 # Create Admin on Startup
@@ -153,13 +175,23 @@ app.add_middleware(
 )
 
 # ====================================================
-# OpenAI Client
+# OpenAI Clients
 # ====================================================
+# Client for Whisper (transcription)
 try:
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    whisper_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    print("✅ Whisper client initialized")
 except Exception as e:
-    print(f"⚠️ OpenAI client initialization failed: {e}")
-    client = None
+    print(f"⚠️ Whisper client initialization failed: {e}")
+    whisper_client = None
+
+# Client for GPT (AI questions) - using GPT_MODEL_KEY
+try:
+    gpt_client = OpenAI(api_key=os.getenv("GPT_MODEL_KEY"))
+    print("✅ GPT client initialized for AI questions")
+except Exception as e:
+    print(f"⚠️ GPT client initialization failed: {e}")
+    gpt_client = None
 
 # ====================================================
 # Include Routers
@@ -191,7 +223,11 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 # ====================================================
 @app.get("/")
 async def root():
-    return {"message": "Interview Bot API with Socket.IO is running"}
+    return {
+        "message": "Interview Bot API with Socket.IO is running",
+        "ai_questions_enabled": bool(groq_key),  # Changed from gpt_model_key
+        "whisper_enabled": bool(openai_key)
+    }
 
 @app.get("/health")
 async def health_check():
@@ -205,7 +241,9 @@ async def health_check():
     return {
         "status": "healthy",
         "database": db_status,
-        "cors": "enabled"
+        "cors": "enabled",
+        "ai_questions": bool(groq_key),  # Changed
+        "whisper": bool(openai_key)
     }
 
 @app.get("/test-cors")
@@ -217,18 +255,83 @@ async def test_cors():
         "allowed_origins": ["*"]
     }
 
+# ✅ NEW: Test AI Configuration Endpoint
+@app.get("/test-ai")
+async def test_ai_config():
+    """Test if AI question generation is properly configured"""
+    openai_key = os.getenv("OPENAI_API_KEY")
+    groq_key = os.getenv("GROQ_API_KEY")
+    
+    return {
+        "openai_api_key": {
+            "present": bool(openai_key),
+            "preview": openai_key[:20] + "..." if openai_key else None,
+            "usage": "Whisper transcription only"
+        },
+        "groq_api_key": {
+            "present": bool(groq_key),
+            "preview": groq_key[:20] + "..." if groq_key else None,
+            "usage": "AI question generation (FREE!)"
+        },
+        "ai_handler_location": "ai_handler.py",
+        "recommendation": "Groq is free with generous limits!" if groq_key else "Add GROQ_API_KEY to .env"
+    }
+# ✅ NEW: Test AI Question Generation
+@app.get("/test-generate-question")
+async def test_generate_question(field: str = "devops"):
+    """Test endpoint to generate a single AI question"""
+    try:
+        if not os.getenv("GPT_MODEL_KEY"):
+            return {
+                "error": "GPT_MODEL_KEY not found in environment",
+                "solution": "Add GPT_MODEL_KEY to your .env file"
+            }
+        
+        # Import here to catch any import errors
+        from ai_handler import generate_ai_question
+        
+        # Generate a test question
+        question = await generate_ai_question(
+            interview_id="test_interview",
+            field=field,
+            difficulty="medium"
+        )
+        
+        if question:
+            return {
+                "success": True,
+                "message": "AI question generated successfully!",
+                "question": question,
+                "field": field
+            }
+        else:
+            return {
+                "success": False,
+                "error": "Question generation returned None",
+                "check": "Look at server logs for detailed error"
+            }
+            
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "solution": "Check if ai_handler.py exists and OpenAI package is installed"
+        }
+
 # ====================================================
 # Whisper API Transcription Endpoint
 # ====================================================
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
     try:
-        if client is None:
-            return {"error": "OpenAI client not initialized"}
+        if whisper_client is None:
+            return {"error": "Whisper client not initialized - check OPENAI_API_KEY"}
             
         audio = await file.read()
 
-        result = client.audio.transcriptions.create(
+        result = whisper_client.audio.transcriptions.create(
             file=("audio.webm", audio),
             model="whisper-1",
             language="en",
@@ -258,6 +361,8 @@ if __name__ == "__main__":
     print(f"🔌 Socket.IO: Enabled with interview controls")
     print(f"🌐 CORS: Enabled for all origins")
     print(f"🧪 Test CORS: http://localhost:8000/test-cors")
+    print(f"🤖 Test AI Config: http://localhost:8000/test-ai")
+    print(f"🎯 Test AI Generate: http://localhost:8000/test-generate-question?field=devops")
     print("="*60 + "\n")
     
     # CRITICAL: Use socket_app NOT app!

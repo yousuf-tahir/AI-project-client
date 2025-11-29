@@ -605,4 +605,28 @@
   .interview-room-page .timer-display {
     font-size: 2.5rem;
   }
+
+  /* AI Generated Badge */
+.ai-badge {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  animation: aiGlow 2s ease-in-out infinite;
+}
+
+@keyframes aiGlow {
+  0%, 100% {
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  }
+  50% {
+    box-shadow: 0 2px 12px rgba(102, 126, 234, 0.6);
+  }
+}
 }

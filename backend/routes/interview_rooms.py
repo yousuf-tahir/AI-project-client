@@ -1,12 +1,37 @@
-# routes/interview_rooms.py - FIXED VERSION with proper sync
+# routes/interview_rooms.py - AI INTEGRATION COMPLETE
 
-from fastapi import APIRouter, HTTPException, status, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Optional, List
-from uuid import uuid4
-from db.database import Database
 import os
 import datetime
+import logging
+import traceback
+
+from db.database import Database
+
+# AI handler imports with proper error handling
+try:
+    from ai_handler import generate_multiple_ai_questions, merge_questions, generate_ai_question
+    AI_HANDLER_AVAILABLE = True
+    logging.info("✅ AI handler imported successfully")
+except ImportError as e:
+    logging.warning(f"⚠️ AI handler not available: {e}")
+    AI_HANDLER_AVAILABLE = False
+    
+    # Create dummy functions to prevent errors
+    async def generate_multiple_ai_questions(*args, **kwargs):
+        return []
+    
+    async def merge_questions(static_questions, ai_questions, strategy="alternate"):
+        return static_questions + ai_questions
+    
+    async def generate_ai_question(*args, **kwargs):
+        return None
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/interview-rooms", tags=["interview-rooms"])
 
@@ -34,27 +59,49 @@ class RoomStatusResponse(BaseModel):
     participants: List[dict]
     createdAt: str
 
-# --- Fallback Question Bank (if no DB questions found) ---
+# --- Fallback Question Bank ---
 QUESTION_BANK = {
     "web_development": [
-        {"id": "web-1", "text": "What is React and why use it?", "difficulty": "easy", "type": "technical"},
-        {"id": "web-2", "text": "Explain hooks and give an example using useEffect.", "difficulty": "medium", "type": "technical"},
-        {"id": "web-3", "text": "How do you optimize React rendering performance?", "difficulty": "hard", "type": "technical"}
+        {"id": "web-1", "text": "What is React and why use it?", "difficulty": "easy", "type": "technical", "source": "fallback"},
+        {"id": "web-2", "text": "Explain hooks and give an example using useEffect.", "difficulty": "medium", "type": "technical", "source": "fallback"},
+        {"id": "web-3", "text": "How do you optimize React rendering performance?", "difficulty": "hard", "type": "technical", "source": "fallback"},
+        {"id": "web-4", "text": "What are the key differences between REST and GraphQL?", "difficulty": "medium", "type": "technical", "source": "fallback"},
+        {"id": "web-5", "text": "Explain the virtual DOM and its benefits.", "difficulty": "medium", "type": "technical", "source": "fallback"}
     ],
     "backend_development": [
-        {"id": "back-1", "text": "Explain REST and how it differs from GraphQL.", "difficulty": "easy", "type": "technical"},
-        {"id": "back-2", "text": "Describe transactions in relational databases.", "difficulty": "medium", "type": "technical"},
-        {"id": "back-3", "text": "How would you design an authentication system?", "difficulty": "hard", "type": "technical"}
+        {"id": "back-1", "text": "Explain REST and how it differs from GraphQL.", "difficulty": "easy", "type": "technical", "source": "fallback"},
+        {"id": "back-2", "text": "Describe transactions in relational databases.", "difficulty": "medium", "type": "technical", "source": "fallback"},
+        {"id": "back-3", "text": "How would you design an authentication system?", "difficulty": "hard", "type": "technical", "source": "fallback"},
+        {"id": "back-4", "text": "What is SQL injection and how do you prevent it?", "difficulty": "medium", "type": "technical", "source": "fallback"},
+        {"id": "back-5", "text": "Explain microservices architecture.", "difficulty": "hard", "type": "technical", "source": "fallback"}
     ],
     "data_science": [
-        {"id": "ds-1", "text": "What is the difference between supervised and unsupervised learning?", "difficulty": "easy", "type": "technical"},
-        {"id": "ds-2", "text": "Explain overfitting and how to prevent it.", "difficulty": "medium", "type": "technical"},
-        {"id": "ds-3", "text": "How do you handle imbalanced datasets?", "difficulty": "hard", "type": "technical"}
+        {"id": "ds-1", "text": "What is the difference between supervised and unsupervised learning?", "difficulty": "easy", "type": "technical", "source": "fallback"},
+        {"id": "ds-2", "text": "Explain overfitting and how to prevent it.", "difficulty": "medium", "type": "technical", "source": "fallback"},
+        {"id": "ds-3", "text": "How do you handle imbalanced datasets?", "difficulty": "hard", "type": "technical", "source": "fallback"},
+        {"id": "ds-4", "text": "What is cross-validation and why is it important?", "difficulty": "medium", "type": "technical", "source": "fallback"},
+        {"id": "ds-5", "text": "Explain the bias-variance tradeoff.", "difficulty": "hard", "type": "technical", "source": "fallback"}
+    ],
+    "devops": [
+        {"id": "devops-1", "text": "Explain CI/CD pipeline and its benefits.", "difficulty": "easy", "type": "technical", "source": "fallback"},
+        {"id": "devops-2", "text": "How do you handle container orchestration with Kubernetes?", "difficulty": "medium", "type": "technical", "source": "fallback"},
+        {"id": "devops-3", "text": "Design a highly available infrastructure on AWS.", "difficulty": "hard", "type": "technical", "source": "fallback"},
+        {"id": "devops-4", "text": "What is Infrastructure as Code and why use it?", "difficulty": "medium", "type": "technical", "source": "fallback"},
+        {"id": "devops-5", "text": "Explain Docker and containerization benefits.", "difficulty": "easy", "type": "technical", "source": "fallback"}
+    ],
+    "mobile_development": [
+        {"id": "mobile-1", "text": "What are the differences between iOS and Android development?", "difficulty": "easy", "type": "technical", "source": "fallback"},
+        {"id": "mobile-2", "text": "Explain state management in React Native.", "difficulty": "medium", "type": "technical", "source": "fallback"},
+        {"id": "mobile-3", "text": "How do you optimize mobile app performance?", "difficulty": "hard", "type": "technical", "source": "fallback"},
+        {"id": "mobile-4", "text": "What are the key considerations for mobile app security?", "difficulty": "medium", "type": "technical", "source": "fallback"},
+        {"id": "mobile-5", "text": "Explain push notifications and their implementation.", "difficulty": "medium", "type": "technical", "source": "fallback"}
     ],
     "general": [
-        {"id": "gen-1", "text": "Tell me about your experience relevant to this role.", "difficulty": "easy", "type": "behavioral"},
-        {"id": "gen-2", "text": "Why are you interested in this position?", "difficulty": "easy", "type": "behavioral"},
-        {"id": "gen-3", "text": "Describe a challenging project you worked on.", "difficulty": "medium", "type": "behavioral"}
+        {"id": "gen-1", "text": "Tell me about your experience relevant to this role.", "difficulty": "easy", "type": "behavioral", "source": "fallback"},
+        {"id": "gen-2", "text": "Why are you interested in this position?", "difficulty": "easy", "type": "behavioral", "source": "fallback"},
+        {"id": "gen-3", "text": "Describe a challenging project you worked on.", "difficulty": "medium", "type": "behavioral", "source": "fallback"},
+        {"id": "gen-4", "text": "How do you handle tight deadlines?", "difficulty": "medium", "type": "behavioral", "source": "fallback"},
+        {"id": "gen-5", "text": "Describe a time you had to learn a new technology quickly.", "difficulty": "medium", "type": "behavioral", "source": "fallback"}
     ]
 }
 
@@ -64,7 +111,7 @@ async def create_interview_room(payload: CreateRoomRequest):
     """
     Create a room for an existing scheduled interview.
     Only the HR who scheduled it can create the room.
-    Automatically loads questions based on interview field.
+    Questions will be loaded when interview starts.
     """
     db = await Database.get_db()
     if db is None:
@@ -77,6 +124,7 @@ async def create_interview_room(payload: CreateRoomRequest):
     if payload.hr_id and interview.get("hr_id") != payload.hr_id:
         raise HTTPException(status_code=403, detail="Only the scheduling HR can create this room")
 
+    # If room already exists, return existing data
     if interview.get("room_id"):
         frontend_base = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
         return CreateRoomResponse(
@@ -89,37 +137,9 @@ async def create_interview_room(payload: CreateRoomRequest):
 
     room_id = f"interview_{payload.interview_id}"
     
-    field_key = interview.get("field", "general")
-    print(f"[INFO] Loading questions for field: {field_key}")
-    
-    question_list = []
-    try:
-        questions_cursor = db.interview_questions.find({"field": field_key}).limit(10)
-        questions_from_db = await questions_cursor.to_list(length=10)
-        
-        if questions_from_db:
-            print(f"[INFO] Found {len(questions_from_db)} questions in DB for field {field_key}")
-            question_list = [
-                {
-                    "id": str(q["_id"]),
-                    "text": q["question_text"],
-                    "difficulty": q.get("difficulty", "medium"),
-                    "type": q.get("question_type", "technical")
-                }
-                for q in questions_from_db
-            ]
-        else:
-            print(f"[WARN] No questions found in DB for field {field_key}, using fallback")
-            question_list = QUESTION_BANK.get(field_key, QUESTION_BANK.get("general", []))
-    except Exception as e:
-        print(f"[ERROR] Error fetching questions: {e}")
-        question_list = QUESTION_BANK.get(field_key, QUESTION_BANK.get("general", []))
-    
-    if not question_list:
-        question_list = QUESTION_BANK["general"]
-    
-    print(f"[INFO] Loaded {len(question_list)} questions for interview")
+    logger.info(f"Creating room for interview: {payload.interview_id}")
 
+    # Don't load questions here - they'll be loaded on interview start
     now = datetime.datetime.utcnow()
     await db.interviews.update_one(
         {"_id": payload.interview_id},
@@ -127,8 +147,8 @@ async def create_interview_room(payload: CreateRoomRequest):
             "$set": {
                 "room_id": room_id,
                 "room_status": "created",
-                "status": "scheduled",  # Ensure status is set
-                "questions": question_list,
+                "status": "scheduled",
+                "questions": [],  # Empty - will be populated on start
                 "current_question_index": 0,
                 "qa": [],
                 "participants": [],
@@ -141,6 +161,8 @@ async def create_interview_room(payload: CreateRoomRequest):
     frontend_base = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
     join_url = f"{frontend_base}/interview-room/{payload.interview_id}"
 
+    logger.info(f"✅ Room created: {room_id}")
+    
     return CreateRoomResponse(
         interviewId=payload.interview_id,
         roomId=room_id,
@@ -150,13 +172,17 @@ async def create_interview_room(payload: CreateRoomRequest):
     )
 
 
-# --- FIXED: Start Interview with Server-Side Broadcast ---
+# --- Start Interview with AI Question Generation ---
 @router.post("/{interview_id}/start-interview")
 async def start_interview(interview_id: str, request: Request):
     """
     Start the interview (HR only).
-    Sets status to 'in_progress' and broadcasts to all participants.
+    Generates AI questions, merges with static questions, and broadcasts to all participants.
     """
+    logger.info(f"\n{'='*80}")
+    logger.info(f"🚀 START INTERVIEW CALLED - ID: {interview_id}")
+    logger.info(f"{'='*80}")
+    
     db = await Database.get_db()
     if db is None:
         raise HTTPException(status_code=500, detail="Database unavailable")
@@ -168,59 +194,182 @@ async def start_interview(interview_id: str, request: Request):
     if not interview.get("room_id"):
         raise HTTPException(status_code=400, detail="Room not created yet")
 
-    # Update database with precise server timestamp
-    server_time = datetime.datetime.utcnow()
-    await db.interviews.update_one(
-        {"_id": interview_id},
-        {
-            "$set": {
-                "status": "in_progress",
-                "started_at": server_time,
-                "updated_at": server_time,
-                "current_question_index": 0  # Ensure we start at question 0
-            }
-        }
-    )
-
-    print(f"[API] Interview {interview_id} started at {server_time.isoformat()}, broadcasting to room {interview['room_id']}")
-
-    # ✅ FIXED: Server-side broadcast via Socket.IO with proper error handling
+    field = interview.get("field", "general")
+    logger.info(f"📂 Interview field: {field}")
+    
+    # ============================================
+    # STEP 1: Load Static Questions from Database
+    # ============================================
+    static_questions = []
     try:
-        # Check if Socket.IO is available on app state
-        if not hasattr(request.app.state, 'sio') or request.app.state.sio is None:
-            print(f"[WARNING] Socket.IO not available on app.state, skipping broadcast")
-            # Still return success since DB was updated
-            return {
-                "message": "Interview started successfully (broadcast skipped)",
-                "status": "in_progress",
-                "startedAt": server_time.isoformat(),
-                "serverTime": server_time.isoformat()
-            }
-
-        sio = request.app.state.sio
+        logger.info(f"🔍 Searching database for {field} questions...")
+        questions_cursor = db.interview_questions.find({"field": field}).limit(5)
+        questions_from_db = await questions_cursor.to_list(length=5)
         
-        # Verify the room exists and has participants before broadcasting
-        await sio.emit('interview_started', {
-            'roomId': interview['room_id'],
-            'timestamp': server_time.isoformat(),
-            'serverTime': server_time.isoformat(),
-            'currentQuestionIndex': 0
-        }, room=interview['room_id'])
-        print(f"[API] ✅ Broadcasted interview_started to room {interview['room_id']}")
+        if questions_from_db:
+            logger.info(f"✅ Found {len(questions_from_db)} questions in database")
+            static_questions = [
+                {
+                    "id": str(q["_id"]),
+                    "text": q["question_text"],
+                    "difficulty": q.get("difficulty", "medium"),
+                    "type": q.get("question_type", "technical"),
+                    "source": "database"
+                }
+                for q in questions_from_db
+            ]
+        else:
+            logger.warning(f"⚠️ No database questions found, using fallback")
+            static_questions = QUESTION_BANK.get(field, QUESTION_BANK.get("general", []))[:5]
+        
+        logger.info(f"📝 Static questions loaded: {len(static_questions)}")
+        for i, q in enumerate(static_questions, 1):
+            logger.info(f"   {i}. [{q.get('source', 'unknown')}] {q['text'][:60]}...")
+            
+    except Exception as e:
+        logger.error(f"❌ Error loading static questions: {e}")
+        traceback.print_exc()
+        static_questions = QUESTION_BANK.get(field, QUESTION_BANK.get("general", []))[:5]
+    
+    # ============================================
+    # STEP 2: Generate AI Questions
+    # ============================================
+    ai_questions = []
+    
+    if AI_HANDLER_AVAILABLE:
+        try:
+            api_key = os.getenv("GROQ_API_KEY")
+            
+            if api_key:
+                logger.info(f"🤖 Generating AI questions for field: {field}")
+                logger.info(f"🔑 API Key present: {api_key[:20]}...")
+                
+                # Generate 3 AI questions with difficulty mix
+                ai_questions = await generate_multiple_ai_questions(
+                    interview_id=interview_id,
+                    field=field,
+                    count=3,
+                    difficulty_mix=True
+                )
+                
+                if ai_questions:
+                    logger.info(f"✅ Generated {len(ai_questions)} AI questions")
+                    for i, q in enumerate(ai_questions, 1):
+                        logger.info(f"   {i}. [AI-{q.get('difficulty', 'medium')}] {q['text'][:60]}...")
+                else:
+                    logger.warning("⚠️ AI generation returned empty list")
+            else:
+                logger.warning("⚠️ No GROQ_API_KEY found - skipping AI generation")
+                
+        except Exception as e:
+            logger.error(f"❌ AI question generation failed: {e}")
+            traceback.print_exc()
+    else:
+        logger.warning("⚠️ AI handler not available - using static questions only")
+    
+    # ============================================
+    # STEP 3: Merge Questions
+    # ============================================
+    logger.info(f"\n🔀 Merging questions...")
+    logger.info(f"   Static: {len(static_questions)}")
+    logger.info(f"   AI: {len(ai_questions)}")
+    
+    try:
+        # Use alternate strategy: static, AI, static, AI, ...
+        final_questions = await merge_questions(
+            static_questions=static_questions,
+            ai_questions=ai_questions,
+            strategy="alternate"
+        )
+        logger.info(f"✅ Merged successfully: {len(final_questions)} total questions")
+    except Exception as e:
+        logger.error(f"❌ Merge failed: {e}")
+        # Fallback: just combine them
+        final_questions = static_questions + ai_questions
+    
+    # Display final question list
+    logger.info(f"\n📋 FINAL QUESTION LIST ({len(final_questions)} total):")
+    for i, q in enumerate(final_questions, 1):
+        source = q.get('source', 'unknown')
+        emoji = "🤖" if source == "ai_generated" else "📚"
+        logger.info(f"   {i}. {emoji} [{source}] {q['text'][:60]}...")
+    
+    # ============================================
+    # STEP 4: Save to Database
+    # ============================================
+    logger.info(f"\n💾 Saving to database...")
+    server_time = datetime.datetime.utcnow()
+    
+    try:
+        await db.interviews.update_one(
+            {"_id": interview_id},
+            {
+                "$set": {
+                    "status": "in_progress",
+                    "started_at": server_time,
+                    "updated_at": server_time,
+                    "current_question_index": 0,
+                    "questions": final_questions
+                }
+            }
+        )
+        logger.info(f"✅ Database updated successfully")
+    except Exception as e:
+        logger.error(f"❌ Database update failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update interview: {str(e)}")
+
+    # ============================================
+    # STEP 5: Broadcast via Socket.IO
+    # ============================================
+    logger.info(f"\n📡 Broadcasting to room: {interview['room_id']}")
+    
+    try:
+        sio = getattr(request.app.state, 'sio', None)
+        
+        if sio is not None:
+            broadcast_data = {
+                'roomId': interview['room_id'],
+                'timestamp': server_time.isoformat(),
+                'serverTime': server_time.isoformat(),
+                'currentQuestionIndex': 0,
+                'totalQuestions': len(final_questions),
+                'questions': final_questions
+            }
+            
+            await sio.emit('interview_started', broadcast_data, room=interview['room_id'])
+            logger.info(f"✅ Broadcast successful")
+        else:
+            logger.warning("⚠️ Socket.IO not available in app.state")
         
     except Exception as e:
-        print(f"[ERROR] ❌ Failed to broadcast interview_started: {e}")
-        # Don't raise error here - interview was started in DB, just broadcast failed
-        # Log the error but still return success
+        logger.error(f"❌ Broadcast failed: {e}")
+        traceback.print_exc()
 
+    # ============================================
+    # STEP 6: Return Response
+    # ============================================
+    static_count = len([q for q in final_questions if q.get("source") not in ["ai_generated", "ai_followup"]])
+    ai_count = len([q for q in final_questions if q.get("source") == "ai_generated"])
+    
+    logger.info(f"\n✅ INTERVIEW STARTED SUCCESSFULLY")
+    logger.info(f"   Total Questions: {len(final_questions)}")
+    logger.info(f"   Static: {static_count}")
+    logger.info(f"   AI Generated: {ai_count}")
+    logger.info(f"{'='*80}\n")
+    
     return {
         "message": "Interview started successfully",
         "status": "in_progress",
         "startedAt": server_time.isoformat(),
-        "serverTime": server_time.isoformat()
+        "serverTime": server_time.isoformat(),
+        "totalQuestions": len(final_questions),
+        "staticQuestions": static_count,
+        "aiQuestions": ai_count,
+        "questions": final_questions
     }
 
-# --- FIXED: Submit Answer with Server-Side Broadcast ---
+
+# --- Submit Answer ---
 @router.post("/{interview_id}/submit-answer")
 async def submit_answer(interview_id: str, payload: dict, request: Request):
     """
@@ -250,6 +399,7 @@ async def submit_answer(interview_id: str, payload: dict, request: Request):
         "question_id": question.get("id"),
         "question_text": question.get("text"),
         "question_type": question.get("type"),
+        "question_source": question.get("source", "unknown"),
         "difficulty": question.get("difficulty"),
         "answer": answer_text,
         "answered_by": user_id,
@@ -258,10 +408,9 @@ async def submit_answer(interview_id: str, payload: dict, request: Request):
     }
 
     next_index = question_index + 1
-    # ✅ CRITICAL FIX: Check if we just answered the LAST question
     is_last = next_index >= len(questions)
     
-    print(f"[API] Q{question_index} submitted, next={next_index}, total={len(questions)}, isLast={is_last}")
+    logger.info(f"Answer submitted: Q{question_index}, next={next_index}, total={len(questions)}, isLast={is_last}")
 
     # Update database
     update_data = {
@@ -273,7 +422,7 @@ async def submit_answer(interview_id: str, payload: dict, request: Request):
         update_data["status"] = "completed"
         update_data["completed_at"] = timestamp
         update_data["room_status"] = "completed"
-        print(f"[API] 🎉 Interview completed!")
+        logger.info(f"✅ Interview completed!")
 
     await db.interviews.update_one(
         {"_id": interview_id},
@@ -285,8 +434,9 @@ async def submit_answer(interview_id: str, payload: dict, request: Request):
 
     # Broadcast via Socket.IO
     try:
-        sio = request.app.state.sio
-        if sio:
+        sio = getattr(request.app.state, 'sio', None)
+        
+        if sio is not None:
             room_id = interview['room_id']
             broadcast_data = {
                 'roomId': room_id,
@@ -297,13 +447,12 @@ async def submit_answer(interview_id: str, payload: dict, request: Request):
             }
             
             await sio.emit('next_question', broadcast_data, room=room_id)
-            print(f"[API] ✅ Broadcasted next_question: nextIndex={next_index}, isComplete={is_last}")
+            logger.info(f"✅ Broadcasted next_question: nextIndex={next_index}, isComplete={is_last}")
         else:
-            print(f"[API] ❌ Socket.IO instance is None")
+            logger.warning("⚠️ Socket.IO not available")
             
     except Exception as e:
-        print(f"[API] ❌ Failed to broadcast next_question: {e}")
-        import traceback
+        logger.error(f"❌ Broadcast failed: {e}")
         traceback.print_exc()
 
     return {
@@ -313,12 +462,12 @@ async def submit_answer(interview_id: str, payload: dict, request: Request):
         "serverTime": timestamp.isoformat()
     }
 
+
 # --- Get Current State ---
 @router.get("/{interview_id}/current-state")
 async def get_current_interview_state(interview_id: str):
     """
     Get current state of interview including questions and current index.
-    Includes server time for client sync.
     """
     db = await Database.get_db()
     if db is None:
@@ -349,7 +498,6 @@ async def get_current_interview_state(interview_id: str):
 async def get_room_status(interview_id: str):
     """
     Get current status of an interview room.
-    Returns room details and active participants.
     """
     db = await Database.get_db()
     if db is None:
@@ -376,7 +524,6 @@ async def get_room_status(interview_id: str):
 async def validate_join(payload: JoinRoomRequest):
     """
     Validate that a user can join a specific room.
-    Returns interview details if authorized.
     """
     db = await Database.get_db()
     if db is None:
@@ -417,7 +564,6 @@ async def validate_join(payload: JoinRoomRequest):
 async def get_candidate_interviews(candidate_id: str):
     """
     Get list of upcoming interviews for a candidate.
-    Returns interviews with join URLs if rooms are created.
     """
     db = await Database.get_db()
     if db is None:
@@ -460,5 +606,5 @@ async def get_candidate_interviews(candidate_id: str):
             item["joinUrl"] = f"{frontend_base}/interview-room/{interview['_id']}"
         
         result.append(item)
-    
+
     return result
