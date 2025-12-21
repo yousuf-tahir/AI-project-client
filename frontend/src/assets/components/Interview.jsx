@@ -28,14 +28,14 @@ const Interview = ({ onNavigate }) => {
   // Fetch interviews on mount
   useEffect(() => {
     let isMounted = true;
-    
+
     const fetchInterviews = async () => {
       if (!user) {
         console.error('No user found');
         setLoadingInterviews(false);
         return;
       }
-      
+
       const candidateId = user._id || user.id || user.user_id;
       if (!candidateId) {
         console.error('No candidate ID found');
@@ -46,15 +46,15 @@ const Interview = ({ onNavigate }) => {
       try {
         console.log('Fetching interviews for candidate:', candidateId);
         const resp = await fetch(`${API_BASE}/api/interview-rooms/candidate/${candidateId}/upcoming`);
-        
+
         if (!resp.ok) {
           const errorText = await resp.text();
           console.error('Failed to fetch interviews:', resp.status, errorText);
           throw new Error('Failed to load interviews');
         }
-        
+
         const data = await resp.json();
-        
+
         if (isMounted) {
           console.log('Fetched interviews:', data);
           setRealInterviews(Array.isArray(data) ? data : []);
@@ -70,7 +70,7 @@ const Interview = ({ onNavigate }) => {
     };
 
     fetchInterviews();
-    
+
     return () => {
       isMounted = false;
     };
@@ -84,7 +84,9 @@ const Interview = ({ onNavigate }) => {
       .filter(interview => {
         try {
           const interviewDateTime = new Date(`${interview.date}T${interview.time}`);
-          return interviewDateTime > new Date();
+          const graceTime = new Date(interviewDateTime.getTime() + 60 * 1000);
+          return graceTime > new Date();
+
         } catch {
           return false;
         }
@@ -93,12 +95,12 @@ const Interview = ({ onNavigate }) => {
         const interviewDate = new Date(`${interview.date}T${interview.time}`);
         const day = interviewDate.getDate().toString().padStart(2, '0');
         const month = interviewDate.toLocaleString('en-US', { month: 'short' }).toUpperCase();
-        
+
         const now = new Date();
         const diffMs = interviewDate - now;
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
         const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        
+
         let countdown;
         if (diffDays > 0) {
           countdown = `Starts in ${diffDays} day${diffDays > 1 ? 's' : ''}`;
@@ -205,7 +207,7 @@ const Interview = ({ onNavigate }) => {
       {/* Sidebar */}
       <aside className="candidate-sidebar">
         <div className="sidebar-header">
-          <span className="app-logo-candidate">Candidate</span> 
+          <span className="app-logo-candidate">Candidate</span>
         </div>
         <nav className="sidebar-nav">
           <ul>
@@ -239,6 +241,7 @@ const Interview = ({ onNavigate }) => {
                 <span className="nav-label">Practice Interview</span>
               </a>
             </li>
+            
             <li className="nav-item">
               <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-feedback'); }}>
                 <span className="material-icons-outlined">rate_review</span>
@@ -262,17 +265,17 @@ const Interview = ({ onNavigate }) => {
               </a>
             </li>
             <li className="nav-item">
-              <a href="#" id="logout-link" className="logout-link" onClick={(e) => { 
-                e.preventDefault(); 
-                const ok = window.confirm('Are you sure you want to logout?'); 
-                if (!ok) return; 
-                try { 
-                  localStorage.removeItem('user'); 
-                  localStorage.removeItem('token'); 
-                  sessionStorage.removeItem('user'); 
-                  sessionStorage.removeItem('token'); 
-                } catch(_){} 
-                window.location.replace('/'); 
+              <a href="#" id="logout-link" className="logout-link" onClick={(e) => {
+                e.preventDefault();
+                const ok = window.confirm('Are you sure you want to logout?');
+                if (!ok) return;
+                try {
+                  localStorage.removeItem('user');
+                  localStorage.removeItem('token');
+                  sessionStorage.removeItem('user');
+                  sessionStorage.removeItem('token');
+                } catch (_) { }
+                window.location.replace('/');
               }}>
                 <span className="material-icons-outlined">logout</span>
                 <span className="nav-label">Logout</span>
@@ -315,7 +318,7 @@ const Interview = ({ onNavigate }) => {
                 <h3>Upcoming Interviews</h3>
                 {loadingInterviews ? (
                   <div style={{ textAlign: 'center', padding: '3rem' }}>
-                    <div style={{ 
+                    <div style={{
                       display: 'inline-block',
                       width: '40px',
                       height: '40px',
@@ -344,8 +347,8 @@ const Interview = ({ onNavigate }) => {
                             <h4>{interview.jobTitle}</h4>
                             <p className="interview-time">{interview.time}</p>
                             <p className="interview-duration">{interview.duration} minutes</p>
-                            <p className="interview-countdown" style={{ 
-                              color: '#6366f1', 
+                            <p className="interview-countdown" style={{
+                              color: '#6366f1',
                               fontSize: '0.875rem',
                               fontWeight: '500',
                               marginTop: '0.25rem'
@@ -355,8 +358,8 @@ const Interview = ({ onNavigate }) => {
                           </div>
                           <div className="interview-status">
                             {interview.hasRoom ? (
-                              <span className="status-badge" style={{ 
-                                background: '#d1fae5', 
+                              <span className="status-badge" style={{
+                                background: '#d1fae5',
                                 color: '#065f46',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -366,9 +369,9 @@ const Interview = ({ onNavigate }) => {
                                 Room Ready
                               </span>
                             ) : (
-                              <span className="status-badge" style={{ 
-                                background: '#fef3c7', 
-                                color: '#92400e' 
+                              <span className="status-badge" style={{
+                                background: '#fef3c7',
+                                color: '#92400e'
                               }}>
                                 Waiting for Room
                               </span>
@@ -376,22 +379,31 @@ const Interview = ({ onNavigate }) => {
                           </div>
                         </div>
                         <div className="interview-actions">
-                          {interview.hasRoom && (
-                            <button 
-                              className="button button-primary button-small"
-                              onClick={() => handleJoinInterview(interview.interviewId)}
-                              style={{ 
-                                background: '#10b981',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.25rem'
-                              }}
-                            >
-                              <span className="material-icons-outlined" style={{ fontSize: '1rem' }}>meeting_room</span>
-                              Join Interview
-                            </button>
-                          )}
-                          <button 
+                          {interview.hasRoom && (() => {
+                            const interviewDateTime = new Date(`${interview.date}T${interview.time}`);
+                            const now = new Date();
+                            const isJoinTime = now >= interviewDateTime;
+
+                            return (
+                              <button
+                                className="button button-primary button-small"
+                                onClick={() => isJoinTime && handleJoinInterview(interview.interviewId)}
+                                disabled={!isJoinTime}
+                                style={{
+                                  background: isJoinTime ? '#10b981' : '#9ca3af',
+                                  cursor: isJoinTime ? 'pointer' : 'not-allowed',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem'
+                                }}
+                              >
+                                <span className="material-icons-outlined" style={{ fontSize: '1rem' }}>meeting_room</span>
+                                {isJoinTime ? "Join Interview" : `Available at ${interview.time}`}
+                              </button>
+                            );
+                          })()}
+
+                          <button
                             className="button button-secondary button-small"
                             onClick={() => openInterviewDetails(interview)}
                           >
@@ -410,7 +422,7 @@ const Interview = ({ onNavigate }) => {
                 <h3>Past Interviews</h3>
                 {loadingInterviews ? (
                   <div style={{ textAlign: 'center', padding: '3rem' }}>
-                    <div style={{ 
+                    <div style={{
                       display: 'inline-block',
                       width: '40px',
                       height: '40px',
@@ -445,7 +457,7 @@ const Interview = ({ onNavigate }) => {
                           </div>
                         </div>
                         <div className="interview-actions">
-                          <button 
+                          <button
                             className="button button-secondary button-small"
                             onClick={() => openInterviewDetails(interview)}
                           >
@@ -501,8 +513,8 @@ const Interview = ({ onNavigate }) => {
             <div className="modal-footer">
               <button className="button button-secondary" onClick={closeInterviewModal}>Close</button>
               {interviewModal.hasRoom && (
-                <button 
-                  className="button button-primary" 
+                <button
+                  className="button button-primary"
                   onClick={() => {
                     closeInterviewModal();
                     handleJoinInterview(interviewModal.interviewId);

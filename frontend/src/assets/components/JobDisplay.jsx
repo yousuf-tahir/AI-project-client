@@ -160,6 +160,13 @@ const JobDisplay = ({ onNavigate, user }) => {
                 <span className="nav-label">Interview Questions</span>
               </a>
             </li>
+            <li className="nav-item"><a href="#" onClick={(e) => go("/interview-questions", e)}><span className="material-icons-outlined">quiz</span><span className="nav-label">Interview Questions</span></a></li>
+               <li className="nav-item">
+              <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('/hr-analysis-list'); }}>
+                <span className="material-icons-outlined">analytics</span>
+                <span className="nav-label">Interview Analysis</span>
+              </a>
+            </li>
             <li className="nav-item">
               <a href="#" onClick={handleNavigation('/schedule-interview')}>
                 <span className="material-icons-outlined">event</span>

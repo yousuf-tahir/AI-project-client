@@ -1,17 +1,14 @@
 import React, { useEffect, useState, useCallback } from "react";
 import "material-icons/iconfont/material-icons.css";
 import "../styles/hrdashboard.css";
-
 const HrDashboard = ({ onNavigate }) => {
   const [hrName, setHrName] = useState(null);
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [candidateCount, setCandidateCount] = useState(0);
   const [interviewCount, setInterviewCount] = useState(0);
   const [feedbackCount, setFeedbackCount] = useState(0);
-  // In Vite, use import.meta.env for environment variables
   const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
-  // Helper function to parse user data from storage
   const tryParseUser = (raw) => {
     try {
       return raw ? JSON.parse(raw) : null;
@@ -20,7 +17,6 @@ const HrDashboard = ({ onNavigate }) => {
     }
   };
 
-  // Fetch interview count for the current HR
   const fetchInterviewCount = async () => {
     try {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
@@ -43,18 +39,15 @@ const HrDashboard = ({ onNavigate }) => {
       const data = await response.json();
       console.log('Interview count response:', data);
 
-      // Use the correct property from the response
       const count = data.hr_interviews_count || data.alt_hr_count || data.total_interviews || 0;
       setInterviewCount(count);
 
     } catch (error) {
       console.error('Error in fetchInterviewCount:', error);
-      // Set to a negative number to indicate error state
       setInterviewCount(-1);
     }
   };
 
-  // Fetch candidate count
   const fetchCandidateCount = async () => {
     try {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
@@ -77,7 +70,6 @@ const HrDashboard = ({ onNavigate }) => {
       const data = await response.json();
       console.log('Candidate count data:', data);
 
-      // Set the total candidate count
       setCandidateCount(data.total || 0);
     } catch (error) {
       console.error('Error fetching candidate count:', error);
@@ -85,7 +77,6 @@ const HrDashboard = ({ onNavigate }) => {
     }
   };
 
-  // Fetch feedback count
   const fetchFeedbackCount = useCallback(async () => {
     try {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
@@ -108,18 +99,15 @@ const HrDashboard = ({ onNavigate }) => {
       const data = await response.json();
       console.log('Feedback count response:', data);
 
-      // Set the total feedback count
       setFeedbackCount(data.total_feedback || 0);
 
     } catch (error) {
       console.error('Error in fetchFeedbackCount:', error);
-      // Set to a negative number to indicate error state
       setFeedbackCount(-1);
     }
   }, [API_BASE]);
 
   useEffect(() => {
-    // Fetch all required data
     const fetchData = async () => {
       await Promise.all([
         fetchCandidateCount(),
@@ -130,7 +118,6 @@ const HrDashboard = ({ onNavigate }) => {
     fetchData();
   }, [fetchCandidateCount, fetchInterviewCount, fetchFeedbackCount]);
 
-  // Attempt to fetch the logged-in HR's name and avatar
   useEffect(() => {
     const storedFullName =
       (typeof localStorage !== 'undefined' && localStorage.getItem('full_name')) ||
@@ -167,7 +154,7 @@ const HrDashboard = ({ onNavigate }) => {
         } else if (userId) {
           url = `${API_BASE}/auth/me?user_id=${encodeURIComponent(userId)}`;
         }
-        if (!url) return; // nothing to query with; keep default text
+        if (!url) return;
 
         const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
         if (!resp.ok) return;
@@ -175,26 +162,23 @@ const HrDashboard = ({ onNavigate }) => {
         if (data && typeof data.full_name === 'string' && data.full_name.trim()) {
           setHrName(data.full_name.trim());
         }
-        // Set avatar if available
         if (data && data._id) {
           const fromApi = data.avatar_url;
           if (fromApi && typeof fromApi === 'string' && fromApi.trim()) {
             const absolute = fromApi.startsWith('http') ? fromApi : `${API_BASE}${fromApi}`;
             setAvatarUrl(absolute);
           } else {
-            // fallback to avatar endpoint by user id
             setAvatarUrl(`${API_BASE}/auth/avatar/${data._id}`);
           }
         }
       } catch (e) {
-        // Silently ignore and fallback to default
+        // Silently ignore
       }
     };
 
     fetchName();
   }, []);
 
-  // Local navigation helper used by sidebar links
   const handleNavigation = (path) => (e) => {
     if (e) e.preventDefault();
     if (typeof onNavigate === 'function') {
@@ -204,7 +188,6 @@ const HrDashboard = ({ onNavigate }) => {
     }
   };
 
-  // Navigation handler for the go function
   const go = (path, e) => {
     if (e) e.preventDefault();
     if (typeof onNavigate === 'function') {
@@ -247,7 +230,6 @@ const HrDashboard = ({ onNavigate }) => {
                 <span className="nav-label">Job Display</span>
               </a>
             </li>
-          
             <li className="nav-item">
               <a href="#" onClick={(e) => go("/candidates-apply", e)}>
                 <span className="material-icons-outlined">how_to_reg</span>
@@ -264,6 +246,12 @@ const HrDashboard = ({ onNavigate }) => {
               <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('/interview-questions'); }}>
                 <span className="material-icons-outlined">quiz</span>
                 <span className="nav-label">Interview Questions</span>
+              </a>
+            </li>
+            <li className="nav-item">
+              <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('/hr-analysis-list'); }}>
+                <span className="material-icons-outlined">analytics</span>
+                <span className="nav-label">Interview Analysis</span>
               </a>
             </li>
             <li className="nav-item">
@@ -306,7 +294,6 @@ const HrDashboard = ({ onNavigate }) => {
 
       {/* Main Content */}
       <div className="main-content">
-        {/* Top Bar */}
         <header className="top-bar">
           <div className="top-bar-left">
             <h2>Dashboard Overview</h2>
@@ -317,7 +304,6 @@ const HrDashboard = ({ onNavigate }) => {
               <span className="notification-badge">3</span>
             </button>
             <div className="user-profile">
-              {/* Hidden file input for avatar upload */}
               <input
                 id="avatar-upload-input"
                 type="file"
@@ -327,7 +313,6 @@ const HrDashboard = ({ onNavigate }) => {
                   const file = e.target.files && e.target.files[0];
                   if (!file) return;
                   try {
-                    // Resolve user id from storage again
                     const raw = (typeof localStorage !== 'undefined' && localStorage.getItem('user')) ||
                       (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('user'));
                     let uid = null;
@@ -343,12 +328,10 @@ const HrDashboard = ({ onNavigate }) => {
                     const out = await res.json();
                     if (out && out.avatar_url) {
                       const absolute = out.avatar_url.startsWith('http') ? out.avatar_url : `${API_BASE}${out.avatar_url}`;
-                      setAvatarUrl(absolute + `?t=${Date.now()}`); // bust cache
+                      setAvatarUrl(absolute + `?t=${Date.now()}`);
                     }
                   } catch (_) {
-                    // ignore errors silently
                   } finally {
-                    // reset input value to allow re-uploading same file
                     e.target.value = '';
                   }
                 }}
@@ -372,9 +355,7 @@ const HrDashboard = ({ onNavigate }) => {
           </div>
         </header>
 
-        {/* Dashboard Grid */}
         <main className="dashboard-grid">
-          {/* Welcome Card */}
           <section className="card welcome-card">
             <span className="material-icons-outlined welcome-icon">
               waving_hand
@@ -385,7 +366,6 @@ const HrDashboard = ({ onNavigate }) => {
             </div>
           </section>
 
-          {/* Stats Section */}
           <section className="stats-grid">
             <div className="stat-card">
               <div className="stat-icon-wrapper">
@@ -428,7 +408,6 @@ const HrDashboard = ({ onNavigate }) => {
             </div>
           </section>
 
-          {/* Candidates Table */}
           <section className="card list-card candidates-table-card">
             <h3>Matching Candidates</h3>
             <div className="table-responsive">
@@ -516,7 +495,6 @@ const HrDashboard = ({ onNavigate }) => {
             </div>
           </section>
 
-          {/* Upcoming Interviews */}
           <section className="card list-card calendar-widget-card">
             <h3>Upcoming Interviews</h3>
             <ul className="interview-list">

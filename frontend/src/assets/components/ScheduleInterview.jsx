@@ -293,6 +293,12 @@ export default function ScheduleInterview({ onNavigate }) {
             <li className="nav-item"><a href="#" onClick={(e) => go('/candidates-apply', e)}><span className="material-icons-outlined">how_to_reg</span><span className="nav-label">Candidates Apply</span></a></li>
             <li className="nav-item"><a href="#" onClick={(e) => go('/hr-profile', e)}><span className="material-icons-outlined">badge</span><span className="nav-label">Profile</span></a></li>
             <li className="nav-item"><a href="#" onClick={(e) => go('/interview-questions', e)}><span className="material-icons-outlined">quiz</span><span className="nav-label">Interview Questions</span></a></li>
+             <li className="nav-item">
+              <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('/hr-analysis-list'); }}>
+                <span className="material-icons-outlined">analytics</span>
+                <span className="nav-label">Interview Analysis</span>
+              </a>
+            </li>
             <li className="nav-item active"><a href="#" onClick={(e) => go('/schedule-interview', e)}><span className="material-icons-outlined">event</span><span className="nav-label">Schedule Interviews</span></a></li>
             <li className="nav-item"><a href="#" onClick={(e) => go('/notifications', e)}><span className="material-icons-outlined">notifications</span><span className="nav-label">Notifications</span></a></li>
             <li className="nav-item"><a href="#" onClick={(e) => go('/feedback', e)}><span className="material-icons-outlined">rate_review</span><span className="nav-label">Feedback</span></a></li>

@@ -248,7 +248,7 @@ async def start_interview(interview_id: str, request: Request):
                 ai_questions = await generate_multiple_ai_questions(
                     interview_id=interview_id,
                     field=field,
-                    count=3,
+                    count=8,
                     difficulty_mix=True
                 )
                 

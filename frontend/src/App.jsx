@@ -33,14 +33,19 @@ import CandidateJobs from './assets/components/CandidateJobs';
 import HRprofile from './assets/components/HRprofile';
 import CandidatesApply from './assets/components/CandidatesApply';
 import HRApplications from './assets/components/HRApplications';
-import InterviewRoom from './assets/components/InterviewRoom'; // NEW: Interview Room component
+import InterviewRoom from './assets/components/InterviewRoom';
 import VoiceRecorder from './assets/components/VoiceRecorder';
+// NEW: Analysis components
+import HRAnalysisView from './assets/components/HRAnalysisView';
+import CandidateAnalysisView from './assets/components/CandidateAnalysisView';
+import HRAnalysisList from './assets/components/HRAnalysisList'
+import CandidateAnalysisList from './assets/components/CandidateAnalysisList'
 
 
 function App() {
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const [user, setUser] = useState(null);
-  const [userLoaded, setUserLoaded] = useState(false); // new: wait until we've tried to restore user
+  const [userLoaded, setUserLoaded] = useState(false);
 
   // Simple navigation function
   const navigate = (path) => {
@@ -78,7 +83,6 @@ function App() {
         console.log('No stored user/token found');
       }
     } finally {
-      // mark that we've attempted to load user (even if null)
       setUserLoaded(true);
     }
   }, []);
@@ -86,18 +90,16 @@ function App() {
   // Fix authentication timing - wait for user to load before route checks
   useEffect(() => {
     if (!userLoaded) return;
-   
+
     console.log('Route changed to:', currentPath, 'userLoaded:', userLoaded, 'user:', user);
-   
+
     const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user');
     const isPublic = ['/', '/register'].includes(currentPath) || currentPath.startsWith('/public/');
-    // If no user and trying to access protected route, redirect to login
     if (!storedUser && !isPublic) {
       console.log('No user found, redirecting to login');
       navigate('/');
       return;
     }
-    // If we have stored user but state is not set, set it (race condition fix)
     if (storedUser && !user) {
       try {
         const parsedUser = JSON.parse(storedUser);
@@ -107,11 +109,10 @@ function App() {
         console.error('Failed to parse stored user:', e);
       }
     }
-  }, [currentPath, userLoaded, user]); // Add user to dependencies
+  }, [currentPath, userLoaded, user]);
 
   // Simple router
   const renderContent = () => {
-    // don't render routes until userLoaded is true (prevents premature Access denied)
     if (!userLoaded) {
       return <div style={{ padding: 20 }}>Checking session...</div>;
     }
@@ -145,21 +146,50 @@ function App() {
       return <InterviewRoom interviewId={interviewId} onNavigate={navigate} user={user} />;
     }
 
+    // NEW: HR Analysis Route
+    if (pathOnly.startsWith('/hr-analysis/')) {
+      if (user?.role?.toLowerCase() !== 'hr' && user?.role?.toLowerCase() !== 'admin') {
+        return <div>Unauthorized: HR access only</div>;
+      }
+      const interviewId = pathOnly.split('/hr-analysis/')[1];
+      return (
+        <HRAnalysisView
+          interviewId={interviewId}
+          onNavigate={navigate}
+          onBack={() => navigate('/hr')}
+        />
+      );
+    }
+
+    // NEW: Candidate Analysis Route
+    if (pathOnly.startsWith('/candidate-analysis/')) {
+      if (user?.role?.toLowerCase() !== 'candidate') {
+        return <div>Unauthorized: Candidate access only</div>;
+      }
+      const interviewId = pathOnly.split('/candidate-analysis/')[1];
+      return (
+        <CandidateAnalysisView
+          interviewId={interviewId}
+          onBack={() => navigate('/candidate')}
+        />
+      );
+    }
+
     // Protected routes
     if (!user) {
       const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user');
       if (storedUser) {
-        try { setUser(JSON.parse(storedUser)); return <div>Loading your session...</div>; } catch {}
+        try { setUser(JSON.parse(storedUser)); return <div>Loading your session...</div>; } catch { }
       }
       setTimeout(() => navigate('/'), 0);
       return <div>Please log in to continue...</div>;
     }
 
-    // rest of route switch (unchanged)
+    // Rest of route switch
     switch (pathOnly) {
       case '/home':
         return <Home />;
-      case '/set-criteria': // ADDED: Set Criteria route
+      case '/set-criteria':
         return (user?.role?.toLowerCase() === 'hr' || user?.role?.toLowerCase() === 'admin')
           ? <SetCriteriaWithErrorBoundary onNavigate={navigate} user={user} />
           : <div>Unauthorized: HR/Admin access required</div>;
@@ -220,8 +250,6 @@ function App() {
         return <div>Unauthorized: HR/Admin access required</div>;
       case '/interview':
         return <Interview onNavigate={navigate} />;
-      case '/ai-interview/:jobId':
-        return <AIInterview onNavigate={navigate} />;
       case '/practice-interview':
         return <PracticeInterview onNavigate={navigate} />;
       case '/candidate-feedback':
@@ -247,6 +275,15 @@ function App() {
         return user.role?.toLowerCase() === 'admin'
           ? <AdminSetting onNavigate={navigate} />
           : <Settings onNavigate={navigate} />;
+      case '/hr-analysis-list':
+        return user.role?.toLowerCase() === 'hr'
+          ? <HRAnalysisList onNavigate={navigate} />
+          : <div>Unauthorized: HR access only</div>;
+
+      case '/candidate-analysis-list':
+        return user.role?.toLowerCase() === 'candidate'
+          ? <CandidateAnalysisList onNavigate={navigate} />
+          : <div>Unauthorized: Candidate access only</div>;
       case '/voice-recorder':
         return <VoiceRecorder />;
       default:
@@ -263,7 +300,7 @@ function App() {
   const pathNoQuery = (currentPath || '').split('?')[0];
   const isPublicRoute = ['/', '/register'].includes(pathNoQuery) || pathNoQuery.startsWith('/public/');
   const shouldHideNavbar =
-    pathNoQuery.startsWith('/set-criteria') || // ADDED: Hide navbar for set-criteria
+    pathNoQuery.startsWith('/set-criteria') ||
     pathNoQuery === '/job-display' ||
     pathNoQuery === '/hr-profile' ||
     pathNoQuery === '/hr' ||
@@ -283,8 +320,12 @@ function App() {
     pathNoQuery === '/profile' ||
     pathNoQuery === '/admin' ||
     pathNoQuery === '/hr-approvals' ||
+    pathNoQuery === '/hr-analysis-list' ||
+    pathNoQuery === '/candidate-analysis-list' ||
     pathNoQuery === '/system-logs' ||
-    pathNoQuery.startsWith('/interview-room/');
+    pathNoQuery.startsWith('/interview-room/') ||
+    pathNoQuery.startsWith('/hr-analysis/') ||  // NEW
+    pathNoQuery.startsWith('/candidate-analysis/');  // NEW
 
   const hideForApply = pathNoQuery === '/candidates-apply';
 

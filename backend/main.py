@@ -30,6 +30,7 @@ from routes import profile
 from routes import notifications
 from routes import applications
 from routes import interview_rooms
+from routes import interview_analysis
 
 # Import socket handlers
 from socket_handlers import setup_socket_handlers
@@ -210,6 +211,7 @@ app.include_router(notifications.router)
 app.include_router(applications.router)
 app.include_router(applications.app_router)
 app.include_router(interview_rooms.router)
+app.include_router(interview_analysis.router)
 
 # ====================================================
 # Static Files
@@ -327,22 +329,36 @@ async def test_generate_question(field: str = "devops"):
 async def transcribe_audio(file: UploadFile = File(...)):
     try:
         if whisper_client is None:
-            return {"error": "Whisper client not initialized - check OPENAI_API_KEY"}
+            return {"error": "Whisper client not initialized - check OPENAI_API_KEY", "text": ""}
             
-        audio = await file.read()
+        # Read the audio file content
+        audio_bytes = await file.read()
+        
+        # CRITICAL FIX: Use a tuple format that OpenAI expects
+        # Format: (filename, file_content, content_type)
+        audio_file = (
+            file.filename or "audio.webm",  # Filename with extension
+            audio_bytes,                     # Raw bytes
+            file.content_type or "audio/webm"  # MIME type
+        )
+        
+        print(f"[TRANSCRIBE] Processing audio file: {file.filename}, size: {len(audio_bytes)} bytes, type: {file.content_type}")
 
         result = whisper_client.audio.transcriptions.create(
-            file=("audio.webm", audio),
+            file=audio_file,
             model="whisper-1",
             language="en",
-            response_format="text"  
+            response_format="text"
         )
-
+        
+        print(f"[TRANSCRIBE] ✅ Success: {result[:100] if len(result) > 100 else result}")
         return {"text": result}
 
     except Exception as e:
         print(f"[ERROR] Transcription error: {e}")
-        return {"error": str(e)}
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e), "text": ""}
 
 # ====================================================
 # CRITICAL: Wrap with Socket.IO LAST

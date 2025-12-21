@@ -19,7 +19,6 @@ const CandidateDashboard = ({ onNavigate }) => {
   const userName = useMemo(() => {
     if (!user) return 'Candidate';
     
-    // Try various name fields
     if (user.full_name) return user.full_name.split(' ')[0];
     if (user.name) {
       if (typeof user.name === 'string') return user.name.split(' ')[0];
@@ -76,90 +75,100 @@ const CandidateDashboard = ({ onNavigate }) => {
 
   return (
     <div className="candidate-dashboard-layout">
-      {/* Fixed Sidebar - same structure as CandidateJobs */}
-      <aside className="candidate-sidebar">
-        <div className="sidebar-header">
-          <span className="app-logo-candidate">Candidate</span> 
-        </div>
-        <nav className="sidebar-nav">
-          <ul>
-            <li className="nav-item active">
-              <a href="#" onClick={(e) => e.preventDefault()}>
-                <span className="material-icons-outlined">dashboard</span>
-                <span className="nav-label">Dashboard</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-jobs'); }}>
-                <span className="material-icons-outlined">work</span>
-                <span className="nav-label">Jobs</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/profile'); }}>
-                <span className="material-icons-outlined">account_circle</span>
-                <span className="nav-label">My Profile</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/interview'); }}>
-                <span className="material-icons-outlined">event_note</span>
-                <span className="nav-label">My Interviews</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/practice-interview'); }}>
-                <span className="material-icons-outlined">videocam</span>
-                <span className="nav-label">Practice Interview</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-feedback'); }}>
-                <span className="material-icons-outlined">rate_review</span>
-                <span className="nav-label">Feedback</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-notifications'); }}>
-                <span className="material-icons-outlined">notifications</span>
-                <span className="nav-label">Notifications</span>
-              </a>
-            </li>
-          </ul>
-        </nav>
-        <div className="sidebar-footer">
-          <ul>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-settings'); }}>
-                <span className="material-icons-outlined">settings</span>
-                <span className="nav-label">Settings</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a
-                href="#"
-                id="logout-link"
-                className="logout-link"
-                onClick={(e) => {
-                  e.preventDefault();
-                  const ok = window.confirm('Are you sure you want to logout?');
-                  if (!ok) return;
-                  try {
-                    localStorage.removeItem('user');
-                    localStorage.removeItem('token');
-                    sessionStorage.removeItem('user');
-                    sessionStorage.removeItem('token');
-                  } catch (_) {}
-                  window.location.replace('/');
-                }}
-              >
-                <span className="material-icons-outlined">logout</span>
-                <span className="nav-label">Logout</span>
-              </a>
-            </li>
-          </ul>
-        </div>
-      </aside>
+      {/* Sidebar - Add wrapper to prevent scrolling */}
+      <div className="sidebar-wrapper">
+        <aside className="candidate-sidebar">
+          <div className="sidebar-header">
+            <span className="app-logo-candidate">Candidate</span> 
+          </div>
+          <div className="sidebar-content">
+            <nav className="sidebar-nav">
+              <ul>
+                <li className="nav-item active">
+                  <a href="#" onClick={(e) => e.preventDefault()}>
+                    <span className="material-icons-outlined">dashboard</span>
+                    <span className="nav-label">Dashboard</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-jobs'); }}>
+                    <span className="material-icons-outlined">work</span>
+                    <span className="nav-label">Jobs</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/profile'); }}>
+                    <span className="material-icons-outlined">account_circle</span>
+                    <span className="nav-label">My Profile</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/interview'); }}>
+                    <span className="material-icons-outlined">event_note</span>
+                    <span className="nav-label">My Interviews</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/practice-interview'); }}>
+                    <span className="material-icons-outlined">videocam</span>
+                    <span className="nav-label">Practice Interview</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-analysis-list'); }}>
+                    <span className="material-icons-outlined">rate_review</span>
+                    <span className="nav-label">Interview Feedback</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-feedback'); }}>
+                    <span className="material-icons-outlined">feedback</span>
+                    <span className="nav-label">General Feedback</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-notifications'); }}>
+                    <span className="material-icons-outlined">notifications</span>
+                    <span className="nav-label">Notifications</span>
+                  </a>
+                </li>
+              </ul>
+            </nav>
+            <div className="sidebar-footer">
+              <ul>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-settings'); }}>
+                    <span className="material-icons-outlined">settings</span>
+                    <span className="nav-label">Settings</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a
+                    href="#"
+                    id="logout-link"
+                    className="logout-link"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const ok = window.confirm('Are you sure you want to logout?');
+                      if (!ok) return;
+                      try {
+                        localStorage.removeItem('user');
+                        localStorage.removeItem('token');
+                        sessionStorage.removeItem('user');
+                        sessionStorage.removeItem('token');
+                      } catch (_) {}
+                      window.location.replace('/');
+                    }}
+                  >
+                    <span className="material-icons-outlined">logout</span>
+                    <span className="nav-label">Logout</span>
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </aside>
+      </div>
 
       <div className="candidate-main-content">
         <main className="dashboard-main-grid">

@@ -5,6 +5,8 @@ from typing import Optional, List
 from uuid import uuid4
 from db.database import Database
 import datetime
+from fastapi import Request
+import logging
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
@@ -273,3 +275,35 @@ async def delete_interview(interview_id: str):
         raise HTTPException(status_code=404, detail="Interview not found")
 
     return {"message": "Interview deleted successfully"}
+
+  
+
+@router.get("/my-interviews")
+async def get_my_interviews(request: Request):
+    """
+    Get all interviews for the current user (HR or Candidate)
+    """
+    db = await Database.get_db()
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database unavailable")
+    
+    # Get user from token (you'll need to implement proper auth check)
+    # For now, using a simple approach
+    auth_header = request.headers.get('Authorization', '')
+    
+    try:
+        # Extract user info from your auth system
+        # This is a placeholder - adjust based on your auth implementation
+        user_data = {}  # Parse your JWT token here
+        
+        # For now, get from query params as fallback
+        from fastapi import Query
+        
+        # Query all interviews - filter will be done in frontend for now
+        interviews = await db.interviews.find({}).to_list(length=1000)
+        
+        return interviews
+        
+    except Exception as e:
+        logger.error(f"Error fetching my interviews: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

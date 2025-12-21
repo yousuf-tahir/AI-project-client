@@ -3,11 +3,6 @@ import 'material-icons/iconfont/material-icons.css';
 import '../styles/candidate.css';
 import '../styles/jobdisplay.css';
 
-// Candidate-facing job listings that show all HR-posted jobs
-// Tries multiple endpoints gracefully to fetch all jobs without requiring backend changes.
-// Preferred: GET /api/job-criteria (list all)
-// Fallbacks: GET /api/job-criteria?all=true, GET /api/job-criteria/list
-
 const CandidateJobs = ({ onNavigate }) => {
   const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE) || 'http://localhost:8000';
   const [jobs, setJobs] = useState([]);
@@ -15,7 +10,7 @@ const CandidateJobs = ({ onNavigate }) => {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
-  const [hrCache, setHrCache] = useState({}); // key: user_id, value: profile
+  const [hrCache, setHrCache] = useState({});
 
   // Hide global topbar on this page only
   useEffect(() => {
@@ -23,7 +18,7 @@ const CandidateJobs = ({ onNavigate }) => {
     return () => { try { document.body.classList.remove('hide-global-topbar'); } catch {} };
   }, []);
 
-  // SPA navigation helper (same behavior as CandidateDashboard)
+  // SPA navigation helper
   const go = (path) => {
     if (typeof onNavigate === 'function') {
       onNavigate(path);
@@ -85,21 +80,18 @@ const CandidateJobs = ({ onNavigate }) => {
     })();
   }, [API_BASE]);
 
-  // Try to resolve an HR user id from the job record
   const resolveHrUserId = (job) => {
     return (
       job?.hr_id || job?.hrId || job?.user_id || job?.userId || job?.owner_id || job?.ownerId || (job?.hr && (job.hr._id || job.hr.id)) || null
     );
   };
 
-  // Try to resolve an HR email from the job record
   const resolveHrEmail = (job) => {
     return (
       job?.hr_email || job?.email || job?.contact_email || (job?.hr && job.hr.email) || null
     );
   };
 
-  // When we have jobs, fetch missing HR contact details for those that lack inline fields
   useEffect(() => {
     const controller = new AbortController();
     const need = [];
@@ -126,13 +118,12 @@ const CandidateJobs = ({ onNavigate }) => {
     return () => controller.abort();
   }, [jobs, API_BASE]);
 
-  // Secondary enrichment: fetch HR profile by email if user_id is missing
   useEffect(() => {
     const controller = new AbortController();
     const needEmails = [];
     for (const j of jobs || []) {
       const uid = resolveHrUserId(j);
-      if (uid) continue; // already handled by user_id fetch
+      if (uid) continue;
       const em = resolveHrEmail(j);
       if (!em) continue;
       const key = `email:${em.toLowerCase()}`;
@@ -176,92 +167,102 @@ const CandidateJobs = ({ onNavigate }) => {
 
   return (
     <div className="candidate-dashboard-layout">
-      {/* Sidebar (same as CandidateDashboard) */}
-      <aside className="candidate-sidebar">
-        <div className="sidebar-header">
-          <span className="app-logo-candidate">Candidate</span> 
-        </div>
-        <nav className="sidebar-nav">
-          <ul>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate'); }}>
-                <span className="material-icons-outlined">dashboard</span>
-                <span className="nav-label">Dashboard</span>
-              </a>
-            </li>
-            <li className="nav-item active">
-              <a href="#" onClick={(e) => e.preventDefault()}>
-                <span className="material-icons-outlined">work</span>
-                <span className="nav-label">Jobs</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/profile'); }}>
-                <span className="material-icons-outlined">account_circle</span>
-                <span className="nav-label">My Profile</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/interview'); }}>
-                <span className="material-icons-outlined">event_note</span>
-                <span className="nav-label">My Interviews</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/practice-interview'); }}>
-                <span className="material-icons-outlined">videocam</span>
-                <span className="nav-label">Practice Interview</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-feedback'); }}>
-                <span className="material-icons-outlined">rate_review</span>
-                <span className="nav-label">Feedback</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-notifications'); }}>
-                <span className="material-icons-outlined">notifications</span>
-                <span className="nav-label">Notifications</span>
-              </a>
-            </li>
-          </ul>
-        </nav>
-        <div className="sidebar-footer">
-          <ul>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-settings'); }}>
-                <span className="material-icons-outlined">settings</span>
-                <span className="nav-label">Settings</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a
-                href="#"
-                id="logout-link"
-                className="logout-link"
-                onClick={(e) => {
-                  e.preventDefault();
-                  const ok = window.confirm('Are you sure you want to logout?');
-                  if (!ok) return;
-                  try {
-                    localStorage.removeItem('user');
-                    localStorage.removeItem('token');
-                    sessionStorage.removeItem('user');
-                    sessionStorage.removeItem('token');
-                  } catch (_) {}
-                  window.location.replace('/');
-                }}
-              >
-                <span className="material-icons-outlined">logout</span>
-                <span className="nav-label">Logout</span>
-              </a>
-            </li>
-          </ul>
-        </div>
-      </aside>
+      {/* Sidebar with wrapper to prevent scrolling */}
+      <div className="sidebar-wrapper">
+        <aside className="candidate-sidebar">
+          <div className="sidebar-header">
+            <span className="app-logo-candidate">Candidate</span> 
+          </div>
+          <div className="sidebar-content">
+            <nav className="sidebar-nav">
+              <ul>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate'); }}>
+                    <span className="material-icons-outlined">dashboard</span>
+                    <span className="nav-label">Dashboard</span>
+                  </a>
+                </li>
+                <li className="nav-item active">
+                  <a href="#" onClick={(e) => e.preventDefault()}>
+                    <span className="material-icons-outlined">work</span>
+                    <span className="nav-label">Jobs</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/profile'); }}>
+                    <span className="material-icons-outlined">account_circle</span>
+                    <span className="nav-label">My Profile</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/interview'); }}>
+                    <span className="material-icons-outlined">event_note</span>
+                    <span className="nav-label">My Interviews</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/practice-interview'); }}>
+                    <span className="material-icons-outlined">videocam</span>
+                    <span className="nav-label">Practice Interview</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-analysis-list'); }}>
+                    <span className="material-icons-outlined">rate_review</span>
+                    <span className="nav-label">Interview Feedback</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-feedback'); }}>
+                    <span className="material-icons-outlined">rate_review</span>
+                    <span className="nav-label">Feedback</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-notifications'); }}>
+                    <span className="material-icons-outlined">notifications</span>
+                    <span className="nav-label">Notifications</span>
+                  </a>
+                </li>
+              </ul>
+            </nav>
+            <div className="sidebar-footer">
+              <ul>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-settings'); }}>
+                    <span className="material-icons-outlined">settings</span>
+                    <span className="nav-label">Settings</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a
+                    href="#"
+                    id="logout-link"
+                    className="logout-link"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const ok = window.confirm('Are you sure you want to logout?');
+                      if (!ok) return;
+                      try {
+                        localStorage.removeItem('user');
+                        localStorage.removeItem('token');
+                        sessionStorage.removeItem('user');
+                        sessionStorage.removeItem('token');
+                      } catch (_) {}
+                      window.location.replace('/');
+                    }}
+                  >
+                    <span className="material-icons-outlined">logout</span>
+                    <span className="nav-label">Logout</span>
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </aside>
+      </div>
 
-      {/* Main Content (Jobs list) */}
+      {/* Main Content */}
       <div className="candidate-main-content">
         <main className="dashboard-main-grid">
           <section className="card" style={{ gridColumn: '1 / -1' }}>
@@ -271,7 +272,6 @@ const CandidateJobs = ({ onNavigate }) => {
                 <span><span className="material-icons-outlined" style={{fontSize:16,verticalAlign:'middle'}}>work</span> {jobs.length}</span>
               </div>
             </header>
-
 
             <div className="jobdisplay-toolbar">
               <div className="jobdisplay-search">
@@ -314,7 +314,6 @@ const CandidateJobs = ({ onNavigate }) => {
                 {filtered.map((job) => {
                   const posted = new Date(job.updated_at || job.created_at || Date.now());
                   const postedStr = isNaN(posted.getTime()) ? '' : posted.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
-                  // Safely resolve HR and organization/contact info from various possible field names
                   const hrUserId = resolveHrUserId(job);
                   const hrEmailKey = (() => { const em = resolveHrEmail(job); return em ? `email:${String(em).toLowerCase()}` : null; })();
                   const hrProfile = (hrUserId && hrCache[hrUserId]) || (hrEmailKey && hrCache[hrEmailKey]) || null;
@@ -398,7 +397,6 @@ const CandidateJobs = ({ onNavigate }) => {
                             e.preventDefault();
                             const jobId = resolveId(job);
                             const hrId = resolveHrUserId(job) || (job?.hr && (job.hr._id || job.hr.id)) || job?.user_id || job?.owner_id || '';
-                            // Identify candidate id from storage
                             let candidateId = '';
                             let candidateName = '';
                             let candidateEmail = '';
@@ -417,7 +415,6 @@ const CandidateJobs = ({ onNavigate }) => {
                               hr_id: hrId || '',
                             };
 
-                            // Try backend-supported endpoints (most likely to exist first)
                             const endpoints = [
                               `${API_BASE}/api/applications`,
                               `${API_BASE}/applications`,
@@ -430,10 +427,7 @@ const CandidateJobs = ({ onNavigate }) => {
                                 lastErr = new Error(`${res.status} ${res.statusText}`);
                               } catch (e) { lastErr = e; }
                             }
-                            // UX: Always confirm to the user. If backend failed,
-                            // we already saved a local fallback for HR to see.
                             try { alert('Request submitted, please wait...'); } catch {}
-                            // Persist to localStorage as a fallback so HR can see it in Applications page
                             try {
                               const now = new Date().toISOString();
                               const rec = {
@@ -454,13 +448,11 @@ const CandidateJobs = ({ onNavigate }) => {
                               const exists = Array.isArray(arr) && arr.find(a => String(a.candidate_id) === String(candidateId) && String(a.job_id) === String(jobId));
                               if (!exists) arr.push(rec);
                               else {
-                                // update timestamp/status if duplicate
                                 exists.created_at = now;
                                 exists.status = 'Pending';
                               }
                               localStorage.setItem('applications', JSON.stringify(arr));
                             } catch {}
-                            // Stay on the same page (no navigation)
                           }}
                         >
                           Apply Now

@@ -1,4 +1,4 @@
-# /ai_handler.py - GROQ VERSION (FREE!) - COMPLETE FIELD COVERAGE
+# /ai_handler.py - ENHANCED VERSION WITH 7-8 QUESTIONS
 import os
 from groq import Groq
 from db.database import Database
@@ -25,145 +25,104 @@ except Exception as e:
     logger.error(f"Failed to initialize Groq client: {e}")
     client = None
 
-# COMPLETE Field-specific prompts for ALL fields
+# ENHANCED Field-specific prompts with MORE VARIETY
 FIELD_PROMPTS = {
-    "web_development": (
-        "Generate a practical web development interview question suitable for a 30-second answer. "
-        "Focus on: React components, hooks, or state management; JavaScript fundamentals (ES6+, async/await, closures); "
-        "CSS layout (Flexbox, Grid, responsive design); Browser APIs or DOM manipulation; Web performance optimization. "
-        "Make it technical but not too advanced."
-    ),
+    "web_development": {
+        "fundamentals": "Generate a web development question about JavaScript fundamentals, ES6+ features, or core language concepts.",
+        "frameworks": "Generate a question about React, Vue, or Angular - focusing on components, state management, or lifecycle.",
+        "styling": "Generate a question about CSS, responsive design, Flexbox, Grid, or modern styling approaches.",
+        "performance": "Generate a question about web performance optimization, lazy loading, code splitting, or Core Web Vitals.",
+        "apis": "Generate a question about REST APIs, GraphQL, fetch/axios, or handling async operations.",
+        "security": "Generate a question about web security, XSS, CSRF, authentication, or secure coding practices.",
+        "tools": "Generate a question about webpack, build tools, npm/yarn, or development workflows."
+    },
     
-    "mobile_development": (
-        "Generate a practical mobile development interview question suitable for a 30-second answer. "
-        "Focus on: Mobile app architecture patterns (MVC, MVVM); Platform-specific considerations (iOS/Android); "
-        "Performance optimization for mobile; Mobile security best practices; Cross-platform development (React Native, Flutter). "
-        "Make it technical but practical."
-    ),
+    "mobile_development": {
+        "fundamentals": "Generate a mobile development question about app architecture, lifecycle, or platform basics.",
+        "ui": "Generate a question about mobile UI patterns, navigation, or responsive layouts for different screens.",
+        "performance": "Generate a question about mobile performance, battery optimization, or memory management.",
+        "storage": "Generate a question about local storage, caching strategies, or offline-first approaches.",
+        "apis": "Generate a question about mobile API integration, networking, or data synchronization.",
+        "security": "Generate a question about mobile security, secure storage, or API authentication.",
+        "cross_platform": "Generate a question about React Native, Flutter, or cross-platform considerations."
+    },
     
-    "data_science": (
-        "Generate a practical data science interview question suitable for a 30-second answer. "
-        "Focus on: Machine learning basics (supervised vs unsupervised); Data preprocessing and cleaning; "
-        "Model evaluation metrics (accuracy, precision, recall); Common algorithms (linear regression, decision trees); "
-        "Data visualization principles. Make it technical but clear."
-    ),
+    "data_science": {
+        "fundamentals": "Generate a data science question about statistics, probability, or core mathematical concepts.",
+        "preprocessing": "Generate a question about data cleaning, handling missing values, or feature engineering.",
+        "algorithms": "Generate a question about ML algorithms, when to use them, or their trade-offs.",
+        "evaluation": "Generate a question about model evaluation, metrics, or validation techniques.",
+        "visualization": "Generate a question about data visualization, choosing charts, or storytelling with data.",
+        "tools": "Generate a question about pandas, numpy, scikit-learn, or popular data science tools.",
+        "practical": "Generate a question about a real-world data science scenario or case study."
+    },
     
-    "machine_learning": (
-        "Generate a practical machine learning interview question suitable for a 30-second answer. "
-        "Focus on: Neural networks basics; Training vs testing concepts; Overfitting/underfitting; "
-        "Feature engineering; Model evaluation techniques; Popular ML frameworks (TensorFlow, PyTorch). "
-        "Make it technical but accessible."
-    ),
+    "machine_learning": {
+        "fundamentals": "Generate a machine learning question about core concepts, types of learning, or foundations.",
+        "training": "Generate a question about model training, optimization, or gradient descent.",
+        "neural_networks": "Generate a question about neural network architecture, layers, or activation functions.",
+        "overfitting": "Generate a question about overfitting, regularization, or generalization.",
+        "frameworks": "Generate a question about TensorFlow, PyTorch, or ML frameworks.",
+        "deployment": "Generate a question about model deployment, serving, or monitoring in production.",
+        "advanced": "Generate a question about transfer learning, transformers, or advanced ML concepts."
+    },
     
-    "backend_development": (
-        "Generate a practical backend development interview question suitable for a 30-second answer. "
-        "Focus on: REST API design and best practices; Database concepts (SQL vs NoSQL, indexing, transactions); "
-        "Authentication/authorization (JWT, OAuth, sessions); Server architecture and scaling; Error handling and logging. "
-        "Make it technical but practical."
-    ),
+    "backend_development": {
+        "apis": "Generate a backend question about REST API design, versioning, or best practices.",
+        "databases": "Generate a question about database design, queries, indexing, or optimization.",
+        "authentication": "Generate a question about authentication, authorization, JWT, OAuth, or sessions.",
+        "architecture": "Generate a question about backend architecture, microservices, or design patterns.",
+        "performance": "Generate a question about caching, load balancing, or backend performance optimization.",
+        "security": "Generate a question about backend security, SQL injection, or secure coding.",
+        "tools": "Generate a question about Node.js, Python frameworks, or backend technologies."
+    },
     
-    "frontend_development": (
-        "Generate a practical frontend development interview question suitable for a 30-second answer. "
-        "Focus on: JavaScript frameworks (React, Vue, Angular); CSS methodologies (BEM, CSS-in-JS); "
-        "State management (Redux, Context API); Web performance optimization; Browser compatibility issues. "
-        "Make it technical but focused on user interface."
-    ),
+    "cybersecurity": {
+        "attacks": "Generate a cybersecurity question about common attacks like SQL injection, XSS, or phishing.",
+        "tools": "Generate a question about security tools like Wireshark, Nmap, Metasploit, or Kali Linux.",
+        "encryption": "Generate a question about encryption, hashing, SSL/TLS, or cryptography basics.",
+        "network": "Generate a question about network security, firewalls, VPNs, or secure protocols.",
+        "authentication": "Generate a question about authentication methods, MFA, or access control.",
+        "compliance": "Generate a question about security compliance, auditing, or best practices.",
+        "incident": "Generate a question about incident response, vulnerability assessment, or penetration testing."
+    },
     
-    "full_stack_development": (
-        "Generate a practical full-stack development interview question suitable for a 30-second answer. "
-        "Focus on: End-to-end application architecture; API integration; Database design; Deployment strategies; "
-        "Troubleshooting across frontend and backend. Make it comprehensive but concise."
-    ),
+    "devops": {
+        "cicd": "Generate a DevOps question about CI/CD pipelines, automation, or deployment strategies.",
+        "containers": "Generate a question about Docker, containerization, or container best practices.",
+        "orchestration": "Generate a question about Kubernetes, container orchestration, or service management.",
+        "cloud": "Generate a question about cloud services, AWS/Azure/GCP, or cloud architecture.",
+        "monitoring": "Generate a question about monitoring, logging, alerting, or observability.",
+        "iac": "Generate a question about Infrastructure as Code, Terraform, or CloudFormation.",
+        "practices": "Generate a question about DevOps culture, collaboration, or best practices."
+    },
     
-    "devops": (
-        "Generate a practical DevOps interview question suitable for a 30-second answer. "
-        "Focus on: CI/CD pipeline concepts; Containerization (Docker basics, Kubernetes fundamentals); "
-        "Cloud services (AWS/Azure/GCP core services); Monitoring and logging; Infrastructure as Code (Terraform, CloudFormation). "
-        "Make it technical but approachable."
-    ),
-    
-    "cloud_engineering": (
-        "Generate a practical cloud engineering interview question suitable for a 30-second answer. "
-        "Focus on: Cloud service models (IaaS, PaaS, SaaS); Scalability and load balancing; "
-        "Cloud security best practices; Cost optimization; Multi-cloud strategies. "
-        "Make it focused on cloud infrastructure."
-    ),
-    
-    "cybersecurity": (
-        "Generate a practical cybersecurity interview question suitable for a 30-second answer. "
-        "Focus on: Common attacks (phishing, SQL injection, XSS, DDoS); Security tools (Wireshark, Nmap, Metasploit, Kali Linux); "
-        "Basic concepts (encryption, firewalls, VPN, authentication); Network security fundamentals; Vulnerability assessment basics. "
-        "Make it technical but accessible."
-    ),
-    
-    "ui_ux_design": (
-        "Generate a practical UI/UX design interview question suitable for a 30-second answer. "
-        "Focus on: User research methods; Design thinking process; Wireframing and prototyping; "
-        "Usability principles; Accessibility standards; Design tools (Figma, Sketch). "
-        "Make it practical and user-focused."
-    ),
-    
-    "product_management": (
-        "Generate a practical product management interview question suitable for a 30-second answer. "
-        "Focus on: Product strategy and roadmap; User story creation; Prioritization frameworks; "
-        "Metrics and KPIs; Stakeholder management; Agile methodologies. "
-        "Make it strategic and customer-oriented."
-    ),
-    
-    "qa_testing": (
-        "Generate a practical QA/testing interview question suitable for a 30-second answer. "
-        "Focus on: Testing methodologies (unit, integration, end-to-end); Test automation frameworks; "
-        "Bug reporting and tracking; Performance testing; Security testing basics. "
-        "Make it practical and quality-focused."
-    ),
-    
-    "database_administration": (
-        "Generate a practical database administration interview question suitable for a 30-second answer. "
-        "Focus on: Database design principles; Query optimization; Backup and recovery strategies; "
-        "Database security; Performance tuning; SQL vs NoSQL trade-offs. "
-        "Make it technical and data-focused."
-    ),
-    
-    "system_architecture": (
-        "Generate a practical system architecture interview question suitable for a 30-second answer. "
-        "Focus on: System design patterns; Scalability considerations; Microservices vs monolith; "
-        "Load balancing; Caching strategies; Database architecture. "
-        "Make it high-level but technical."
-    ),
-    
-    "blockchain": (
-        "Generate a practical blockchain interview question suitable for a 30-second answer. "
-        "Focus on: Cryptocurrency fundamentals; Smart contracts; Consensus mechanisms; "
-        "Blockchain security; Decentralized applications (dApps); Web3 concepts. "
-        "Make it technical but accessible."
-    ),
-    
-    "game_development": (
-        "Generate a practical game development interview question suitable for a 30-second answer. "
-        "Focus on: Game engines (Unity, Unreal); Physics and collision detection; "
-        "Game loop concepts; Asset management; Performance optimization for games; Multiplayer networking. "
-        "Make it creative and technical."
-    ),
-    
-    "embedded_systems": (
-        "Generate a practical embedded systems interview question suitable for a 30-second answer. "
-        "Focus on: Microcontroller programming; Real-time operating systems; "
-        "Hardware-software integration; Power management; Sensor integration; IoT concepts. "
-        "Make it hardware-focused and technical."
-    ),
-    
-    "general": (
-        "Generate a practical technical interview question suitable for a 30-second answer. "
-        "Focus on: Problem-solving approaches; Basic programming concepts; Software development lifecycle; "
-        "Team collaboration and communication; Learning and adaptation skills. "
-        "Make it engaging but technical."
-    )
+    # Default for fields not explicitly defined
+    "general": {
+        "fundamentals": "Generate a technical interview question about core programming concepts.",
+        "problem_solving": "Generate a question about problem-solving approaches or debugging strategies.",
+        "best_practices": "Generate a question about software development best practices or design patterns.",
+        "collaboration": "Generate a question about teamwork, code reviews, or technical communication.",
+        "learning": "Generate a question about learning new technologies or staying current in tech."
+    }
 }
 
-async def generate_ai_question(interview_id: str, field: str = "general", difficulty: str = "medium") -> Optional[Dict]:
+# Add default structure for other fields
+for field in ["frontend_development", "full_stack_development", "cloud_engineering", 
+              "ui_ux_design", "product_management", "qa_testing", "database_administration",
+              "system_architecture", "blockchain", "game_development", "embedded_systems"]:
+    if field not in FIELD_PROMPTS:
+        FIELD_PROMPTS[field] = FIELD_PROMPTS["general"]
+
+
+async def generate_ai_question(
+    interview_id: str, 
+    field: str = "general", 
+    difficulty: str = "medium",
+    topic: str = "fundamentals"
+) -> Optional[Dict]:
     """
-    Generates a single AI interview question using Groq (FREE!)
-    Enhanced for better field-specific technical questions.
+    Generates a single AI interview question using Groq with topic variety.
     """
     if client is None:
         logger.error("Groq client not initialized. Check GROQ_API_KEY environment variable.")
@@ -174,39 +133,40 @@ async def generate_ai_question(interview_id: str, field: str = "general", diffic
         logger.error("Database unavailable")
         return None
 
-    # Get enhanced field-specific prompt
-    base_prompt = FIELD_PROMPTS.get(field, FIELD_PROMPTS["general"])
+    # Get topic-specific prompt
+    field_topics = FIELD_PROMPTS.get(field, FIELD_PROMPTS["general"])
+    base_prompt = field_topics.get(topic, list(field_topics.values())[0])
     
-    # Enhanced difficulty context for better questions
+    # Enhanced difficulty context
     difficulty_context = {
-        "easy": "Make it fundamental and accessible - suitable for beginners or junior roles. Focus on core concepts.",
-        "medium": "Make it practical and technical - suitable for mid-level developers with some experience.",
-        "hard": "Make it challenging but fair - suitable for senior developers focusing on architecture and best practices."
+        "easy": "Make it fundamental and accessible - suitable for beginners or junior roles. Focus on definitions and basic concepts.",
+        "medium": "Make it practical and technical - suitable for mid-level developers. Focus on real-world application and understanding.",
+        "hard": "Make it challenging - suitable for senior developers. Focus on architecture, trade-offs, and advanced scenarios."
     }
     
-    prompt = f"{base_prompt} {difficulty_context.get(difficulty, '')} Return ONLY the question text, no explanations or preamble."
+    prompt = f"{base_prompt} {difficulty_context.get(difficulty, '')} The answer should take 30-60 seconds. Return ONLY the question text, no explanations."
 
     try:
-        logger.info(f"🤖 Generating {difficulty} {field} question using Groq")
+        logger.info(f"🤖 Generating {difficulty} {field} question (topic: {topic})")
         
-        # Use Groq API with enhanced parameters
+        # Use Groq API
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",  # Fast and powerful
+            model="llama-3.3-70b-versatile",
             messages=[
                 {
                     "role": "system", 
-                    "content": "You are a senior technical interviewer. Generate clear, practical, and field-specific interview questions that can be answered in 30-60 seconds. Focus on real-world scenarios and practical knowledge."
+                    "content": "You are a senior technical interviewer. Generate clear, specific, practical interview questions that test real understanding. Avoid generic questions. Make each question unique and interesting."
                 },
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=120,  # Slightly reduced for more concise questions
-            temperature=0.7,  # Balanced creativity
+            max_tokens=120,
+            temperature=0.8,  # Slightly higher for more variety
             top_p=0.9
         )
 
         question_text = response.choices[0].message.content.strip()
         
-        # Clean up the question (remove quotes if present)
+        # Clean up the question
         if question_text.startswith('"') and question_text.endswith('"'):
             question_text = question_text[1:-1]
         
@@ -219,14 +179,15 @@ async def generate_ai_question(interview_id: str, field: str = "general", diffic
             "source": "ai_generated",
             "generated_at": datetime.datetime.utcnow().isoformat(),
             "model": "groq-llama-3.3-70b",
-            "field": field  # Track which field this was for
+            "field": field,
+            "topic": topic
         }
 
-        logger.info(f"✅ Generated {field} question: {question_text[:60]}...")
+        logger.info(f"✅ Generated question: {question_text[:60]}...")
         return question_obj
 
     except Exception as e:
-        logger.error(f"❌ Failed to generate {field} question: {e}")
+        logger.error(f"❌ Failed to generate question: {e}")
         traceback.print_exc()
         return None
 
@@ -234,69 +195,99 @@ async def generate_ai_question(interview_id: str, field: str = "general", diffic
 async def generate_multiple_ai_questions(
     interview_id: str, 
     field: str = "general", 
-    count: int = 3,
+    count: int = 8,  # Changed default to 8
     difficulty_mix: bool = True
 ) -> List[Dict]:
     """
-    Generate multiple AI questions for an interview using Groq
-    Enhanced with better difficulty distribution for balanced interviews.
+    Generate 7-8 diverse AI questions for an interview using Groq.
+    Enhanced with topic variety for better coverage.
     """
     if client is None:
         logger.error("Groq client not initialized. Skipping AI question generation.")
         return []
     
-    logger.info(f"🚀 Generating {count} {field} questions using Groq")
+    logger.info(f"🚀 Generating {count} diverse {field} questions using Groq")
     
     questions = []
     
-    # Enhanced difficulty distribution for better interview flow
+    # Get available topics for this field
+    field_topics = FIELD_PROMPTS.get(field, FIELD_PROMPTS["general"])
+    topic_list = list(field_topics.keys())
+    
+    # Enhanced difficulty distribution for 7-8 questions
     if difficulty_mix:
-        if count == 1:
-            difficulties = ["medium"]
-        elif count == 2:
-            difficulties = ["easy", "medium"]
-        elif count == 3:
-            difficulties = ["easy", "medium", "medium"]
-        elif count >= 4:
-            # Start easy, mostly medium, end with one hard if enough questions
-            difficulties = ["easy"] + ["medium"] * (count - 2) + (["hard"] if count >= 4 else [])
+        if count <= 3:
+            difficulties = ["easy", "medium", "medium"][:count]
+        elif count <= 5:
+            difficulties = ["easy", "medium", "medium", "medium", "hard"][:count]
+        elif count <= 7:
+            difficulties = ["easy", "easy", "medium", "medium", "medium", "hard", "hard"][:count]
+        else:  # 8+ questions
+            difficulties = ["easy", "easy", "medium", "medium", "medium", "medium", "hard", "hard"][:count]
     else:
         difficulties = ["medium"] * count
     
-    # Sequential generation with progress tracking
-    successful_generations = 0
+    # Ensure we cover different topics for variety
+    topics_to_use = []
     for i in range(count):
-        try:
-            difficulty = difficulties[i] if i < len(difficulties) else "medium"
-            logger.info(f"📝 Generating question {i+1}/{count} ({difficulty} difficulty)")
-            
-            question = await generate_ai_question(interview_id, field, difficulty)
-            
-            if question:
-                questions.append(question)
-                successful_generations += 1
-                # Small delay to be respectful to the API
-                await asyncio.sleep(0.2)
-            else:
-                logger.warning(f"⚠️ Failed to generate question {i+1}/{count}")
+        # Cycle through topics to ensure variety
+        topic = topic_list[i % len(topic_list)]
+        topics_to_use.append(topic)
+    
+    # Generate questions with progress tracking
+    successful_generations = 0
+    failed_attempts = 0
+    max_retries = 2  # Retry failed generations
+    
+    for i in range(count):
+        retry_count = 0
+        question = None
+        
+        while retry_count <= max_retries and question is None:
+            try:
+                difficulty = difficulties[i] if i < len(difficulties) else "medium"
+                topic = topics_to_use[i] if i < len(topics_to_use) else topic_list[0]
                 
-        except Exception as e:
-            logger.error(f"❌ Question generation failed for question {i+1}: {e}")
-            continue
+                logger.info(f"📝 Generating question {i+1}/{count} ({difficulty}, {topic})")
+                
+                question = await generate_ai_question(interview_id, field, difficulty, topic)
+                
+                if question:
+                    questions.append(question)
+                    successful_generations += 1
+                    # Small delay between successful generations
+                    await asyncio.sleep(0.3)
+                else:
+                    retry_count += 1
+                    if retry_count <= max_retries:
+                        logger.warning(f"⚠️ Retrying question {i+1} (attempt {retry_count+1})")
+                        await asyncio.sleep(0.5)
+                        
+            except Exception as e:
+                logger.error(f"❌ Question generation failed for question {i+1}: {e}")
+                retry_count += 1
+                if retry_count <= max_retries:
+                    await asyncio.sleep(0.5)
+        
+        if question is None:
+            failed_attempts += 1
     
     logger.info(f"✅ Successfully generated {successful_generations}/{count} {field} questions")
     
-    # If we failed to generate any questions, provide fallbacks
-    if successful_generations == 0:
-        logger.warning("🔄 No AI questions generated, using field-specific fallbacks")
-        return await get_field_fallbacks(field, count)
+    # If we have less than 5 questions, supplement with fallbacks
+    if successful_generations < 5:
+        logger.warning(f"🔄 Only {successful_generations} questions generated, adding fallbacks")
+        needed_fallbacks = min(count - successful_generations, 5)
+        fallbacks = await get_field_fallbacks(field, needed_fallbacks)
+        questions.extend(fallbacks)
     
     return questions
 
 
 async def get_field_fallbacks(field: str, count: int) -> List[Dict]:
     """
-    Provide field-specific fallback questions when AI generation fails.
+    Provide diverse field-specific fallback questions when AI generation fails.
+    Enhanced with more questions per field.
     """
     fallback_questions = {
         "web_development": [
@@ -304,133 +295,80 @@ async def get_field_fallbacks(field: str, count: int) -> List[Dict]:
             "How would you optimize a website that loads slowly?",
             "What are React hooks and when would you use useState vs useEffect?",
             "How does responsive design work in CSS?",
-            "What are the main differences between REST and GraphQL APIs?"
+            "Explain the event loop in JavaScript.",
+            "What are the main differences between REST and GraphQL APIs?",
+            "How does CSS Grid differ from Flexbox?",
+            "What is the virtual DOM and why is it useful in React?"
         ],
         "mobile_development": [
             "What are the main differences between native and hybrid mobile apps?",
             "How would you optimize battery usage in a mobile app?",
             "What considerations are important for mobile app security?",
             "How do you handle different screen sizes in mobile development?",
-            "What are the pros and cons of using React Native vs Flutter?"
+            "What are the pros and cons of using React Native vs Flutter?",
+            "Explain the mobile app lifecycle.",
+            "How do you implement offline functionality in mobile apps?",
+            "What strategies would you use for mobile data caching?"
         ],
         "data_science": [
             "What's the difference between supervised and unsupervised learning?",
             "How would you handle missing values in a dataset?",
             "What evaluation metrics would you use for a classification problem?",
             "How does cross-validation work in machine learning?",
-            "What is the bias-variance tradeoff?"
+            "What is the bias-variance tradeoff?",
+            "Explain the difference between correlation and causation.",
+            "What is feature engineering and why is it important?",
+            "How would you detect outliers in a dataset?"
         ],
         "machine_learning": [
             "What is overfitting and how can you prevent it?",
             "How does a neural network learn?",
             "What's the difference between classification and regression?",
             "How would you explain gradient descent to a non-technical person?",
-            "What are some common activation functions in neural networks?"
+            "What are some common activation functions in neural networks?",
+            "Explain the concept of backpropagation.",
+            "What is transfer learning and when would you use it?",
+            "How do you choose between different ML algorithms for a problem?"
         ],
         "backend_development": [
             "What's the difference between SQL and NoSQL databases?",
             "How does JWT authentication work?",
             "What are the main principles of REST API design?",
             "How would you handle a database connection failure?",
-            "What is database indexing and why is it important?"
-        ],
-        "frontend_development": [
-            "What's the difference between state and props in React?",
-            "How would you optimize website performance?",
-            "What are the benefits of using CSS Grid over Flexbox?",
-            "How do you handle cross-browser compatibility issues?",
-            "What is the virtual DOM and why is it useful?"
-        ],
-        "full_stack_development": [
-            "How would you design a full-stack application from scratch?",
-            "What considerations are important when choosing a tech stack?",
-            "How do you ensure security across frontend and backend?",
-            "What deployment strategies would you use for a web application?",
-            "How do you handle API versioning in a growing application?"
-        ],
-        "devops": [
-            "What are the main benefits of using containers?",
-            "How would you explain CI/CD to a developer new to DevOps?",
-            "What monitoring tools would you use for a production application?",
-            "How does Kubernetes help with container orchestration?",
-            "What is Infrastructure as Code and why is it important?"
-        ],
-        "cloud_engineering": [
-            "What are the main differences between IaaS, PaaS, and SaaS?",
-            "How would you design a highly available system in the cloud?",
-            "What strategies would you use to optimize cloud costs?",
-            "How do you ensure security in a cloud environment?",
-            "What are the benefits of using multiple cloud providers?"
+            "What is database indexing and why is it important?",
+            "Explain the difference between authentication and authorization.",
+            "How do you implement rate limiting in an API?",
+            "What strategies would you use for API versioning?"
         ],
         "cybersecurity": [
             "What are the main types of SQL injection attacks and how can they be prevented?",
             "How would you explain the difference between encryption and hashing?",
             "What are some common social engineering tactics used in phishing attacks?",
             "What tools in Kali Linux would you use for basic network reconnaissance?",
-            "Why is two-factor authentication important for security?"
+            "Why is two-factor authentication important for security?",
+            "Explain what a DDoS attack is and how to mitigate it.",
+            "What is the principle of least privilege?",
+            "How does SSL/TLS work to secure web communications?"
         ],
-        "ui_ux_design": [
-            "What is the difference between UI and UX design?",
-            "How would you conduct user research for a new product?",
-            "What are some key principles of good usability?",
-            "How do you approach creating a wireframe?",
-            "Why is accessibility important in design?"
-        ],
-        "product_management": [
-            "How would you prioritize features for a new product?",
-            "What metrics would you track to measure product success?",
-            "How do you gather and incorporate user feedback?",
-            "What is the difference between a product roadmap and a backlog?",
-            "How would you handle conflicting stakeholder requirements?"
-        ],
-        "qa_testing": [
-            "What's the difference between unit testing and integration testing?",
-            "How would you approach testing a new feature?",
-            "What are some common test automation frameworks?",
-            "How do you write a good bug report?",
-            "What is regression testing and why is it important?"
-        ],
-        "database_administration": [
-            "What's the difference between a primary key and a foreign key?",
-            "How would you optimize a slow database query?",
-            "What backup strategies would you implement for a production database?",
-            "How do you ensure database security?",
-            "What are the ACID properties in database transactions?"
-        ],
-        "system_architecture": [
-            "What are the trade-offs between microservices and monolithic architecture?",
-            "How would you design a system that needs to handle high traffic?",
-            "What caching strategies would you implement for better performance?",
-            "How do you ensure system reliability and fault tolerance?",
-            "What factors influence your database choice for a new system?"
-        ],
-        "blockchain": [
-            "How would you explain blockchain to someone without a technical background?",
-            "What are smart contracts and how are they used?",
-            "What is the difference between proof of work and proof of stake?",
-            "How does cryptocurrency mining work?",
-            "What are some security considerations in blockchain development?"
-        ],
-        "game_development": [
-            "What is a game loop and why is it important?",
-            "How would you optimize game performance for mobile devices?",
-            "What considerations are important for game physics?",
-            "How do you handle asset management in a large game?",
-            "What are the challenges in developing multiplayer games?"
-        ],
-        "embedded_systems": [
-            "What is the difference between a microcontroller and a microprocessor?",
-            "How would you approach power management in an embedded device?",
-            "What considerations are important for real-time systems?",
-            "How do you debug hardware-software integration issues?",
-            "What are some common communication protocols used in embedded systems?"
+        "devops": [
+            "What are the main benefits of using containers?",
+            "How would you explain CI/CD to a developer new to DevOps?",
+            "What monitoring tools would you use for a production application?",
+            "How does Kubernetes help with container orchestration?",
+            "What is Infrastructure as Code and why is it important?",
+            "Explain the concept of blue-green deployment.",
+            "How do you implement automated rollbacks in a CI/CD pipeline?",
+            "What's the difference between horizontal and vertical scaling?"
         ],
         "general": [
             "How do you approach debugging a complex technical issue?",
             "What's your process for learning a new programming language or technology?",
             "How do you stay updated with the latest industry trends?",
             "What project are you most proud of and why?",
-            "How do you handle tight deadlines and competing priorities?"
+            "How do you handle tight deadlines and competing priorities?",
+            "Explain a time you had to refactor legacy code.",
+            "How do you approach code reviews?",
+            "What's your strategy for writing maintainable code?"
         ]
     }
     
@@ -438,7 +376,7 @@ async def get_field_fallbacks(field: str, count: int) -> List[Dict]:
     from datetime import datetime
     
     questions = fallback_questions.get(field, fallback_questions["general"])
-    selected_questions = questions[:count]  # Take first N questions
+    selected_questions = questions[:count]
     
     result = []
     for i, q_text in enumerate(selected_questions):
@@ -456,7 +394,11 @@ async def get_field_fallbacks(field: str, count: int) -> List[Dict]:
     return result
 
 
-async def merge_questions(static_questions: List[Dict], ai_questions: List[Dict], strategy: str = "alternate") -> List[Dict]:
+async def merge_questions(
+    static_questions: List[Dict], 
+    ai_questions: List[Dict], 
+    strategy: str = "alternate"
+) -> List[Dict]:
     """
     Merge static and AI questions using different strategies.
     """
@@ -483,11 +425,14 @@ async def merge_questions(static_questions: List[Dict], ai_questions: List[Dict]
         return ai_questions + static_questions
     
     else:
-        # Default: static first
         return static_questions + ai_questions
 
 
-async def get_ai_followup_question(interview_id: str, previous_answer: str, field: str) -> Optional[Dict]:
+async def get_ai_followup_question(
+    interview_id: str, 
+    previous_answer: str, 
+    field: str
+) -> Optional[Dict]:
     """
     Generate a follow-up question based on candidate's previous answer using Groq.
     """

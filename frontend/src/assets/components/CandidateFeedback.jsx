@@ -129,6 +129,12 @@ const CandidateFeedback = ({ onNavigate }) => {
                 <span className="nav-label">Practice Interview</span>
               </a>
             </li>
+              <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-analysis-list'); }}>
+                    <span className="material-icons-outlined">rate_review</span>
+                    <span className="nav-label">Interview Feedback</span>
+                  </a>
+                </li>
             <li className="nav-item active">
               <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-feedback'); }}>
                 <span className="material-icons-outlined">feedback</span>

@@ -160,7 +160,7 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
         setTranscribing(false);
         isSubmittingRef.current = false;
 
-        startSyncedTimer(8, () => {
+        startSyncedTimer(10, () => {
             if (mountedRef.current) {
                 startAnsweringPhase();
             }
@@ -542,7 +542,7 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
                 setTranscribing(false);
                 isSubmittingRef.current = false;
 
-                startSyncedTimer(8, () => {
+                startSyncedTimer(10, () => {
                     if (mountedRef.current) {
                         startAnsweringPhase();
                     }
@@ -591,7 +591,7 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
 
             // Start reading phase immediately
             setInterviewState('reading');
-            setTimeLeft(8);
+            setTimeLeft(10);
             console.log('[SOCKET] Starting reading phase for Q' + (nextIndex + 1));
 
             // ✅ CRITICAL FIX: Inline timer logic to avoid stale closures
@@ -607,7 +607,7 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
                 }
 
                 const elapsed = Math.floor((Date.now() - readingStartTime) / 1000);
-                const remaining = Math.max(0, 8 - elapsed);
+                const remaining = Math.max(0, 10 - elapsed);
                 setTimeLeft(remaining);
 
                 if (remaining <= 0) {

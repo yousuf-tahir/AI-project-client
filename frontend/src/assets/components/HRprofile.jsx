@@ -173,6 +173,12 @@ const HRprofile = ({ onNavigate }) => {
                 <span className="nav-label">Interview Questions</span>
               </a>
             </li>
+             <li className="nav-item">
+              <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('/hr-analysis-list'); }}>
+                <span className="material-icons-outlined">analytics</span>
+                <span className="nav-label">Interview Analysis</span>
+              </a>
+            </li>
             <li className="nav-item">
             <a href="#" onClick={(e) => { e.preventDefault(); onNavigate && onNavigate('/schedule-interview'); }}>
                 <span className="material-icons-outlined">event</span>

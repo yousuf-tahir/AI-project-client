@@ -5,7 +5,7 @@ import "../styles/candidate.css";
 const Profile = ({ onNavigate }) => {
   const [profilePreview, setProfilePreview] = useState(null);
   const [resumeName, setResumeName] = useState('');
-  const [certificates, setCertificates] = useState([]); // [{ name, url }]
+  const [certificates, setCertificates] = useState([]);
   const [certError, setCertError] = useState('');
   const [expYears, setExpYears] = useState(0);
   const [expMonths, setExpMonths] = useState(0);
@@ -13,19 +13,18 @@ const Profile = ({ onNavigate }) => {
   const [skillInput, setSkillInput] = useState('');
   const [email, setEmail] = useState('chloe@example.com');
   const [emailError, setEmailError] = useState('');
-  const [phoneLocal, setPhoneLocal] = useState(''); // 0-10 digits after +92
+  const [phoneLocal, setPhoneLocal] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [fullName, setFullName] = useState('Chloe Smith');
   const [fullNameError, setFullNameError] = useState('');
   const [location, setLocation] = useState('');
   const [locationError, setLocationError] = useState('');
-  const [message, setMessage] = useState({ text: '', type: '' }); // success | error
+  const [message, setMessage] = useState({ text: '', type: '' });
   const [saving, setSaving] = useState(false);
-  const [headline, setHeadline] = useState(''); // user's field/role shown under name
+  const [headline, setHeadline] = useState('');
   const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
   const PROFILE_ENDPOINT_BASE = (import.meta.env.VITE_PROFILE_ENDPOINT || `${API_BASE}/api/profile`).replace(/\/$/, '');
 
-  // Lightweight authorized fetch helper
   const authedGet = async (url) => {
     const token = (() => { try { return localStorage.getItem('token') || sessionStorage.getItem('token'); } catch(_) { return null; } })();
     const res = await fetch(url, { headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
@@ -45,7 +44,6 @@ const Profile = ({ onNavigate }) => {
     return { ok: res.ok, status: res.status, data, text };
   };
 
-  // Identify current user from storage (email and user_id)
   const resolveIdentity = () => {
     try {
       const raw = localStorage.getItem('user') || sessionStorage.getItem('user');
@@ -75,7 +73,6 @@ const Profile = ({ onNavigate }) => {
   const handleProfileImageChange = async (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
-    // Temporary preview for instant feedback
     const tempUrl = URL.createObjectURL(file);
     setProfilePreview((prev) => {
       if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
@@ -102,12 +99,10 @@ const Profile = ({ onNavigate }) => {
       const avatarRel = data.avatar_url || null;
       const url = avatarRel ? `${API_BASE}${avatarRel}` : null;
       if (url) {
-        // Swap temp blob for permanent served URL
         setProfilePreview((prev) => {
           if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
           return url;
         });
-        // Persist avatar URL into profiles for future hydration
         try { await authedPost(`${PROFILE_ENDPOINT_BASE}`, { user_id: userId, avatar_url: avatarRel }); } catch (_) {}
         setMessage({ text: 'Profile picture uploaded', type: 'success' });
       }
@@ -116,7 +111,6 @@ const Profile = ({ onNavigate }) => {
     }
   };
 
-  // SPA navigation helper
   const go = (path) => {
     if (typeof onNavigate === 'function') {
       onNavigate(path);
@@ -134,7 +128,6 @@ const Profile = ({ onNavigate }) => {
 
   const handleLocationChange = (e) => {
     const v = e.target.value;
-    // Simplified: just store "Area, City" without validation checks
     setLocation(v);
     setLocationError('');
   };
@@ -142,7 +135,7 @@ const Profile = ({ onNavigate }) => {
   const addSkill = (name) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    if (skills.find((s) => s.toLowerCase() === trimmed.toLowerCase())) return; // avoid duplicates
+    if (skills.find((s) => s.toLowerCase() === trimmed.toLowerCase())) return;
     setSkills((prev) => [...prev, trimmed]);
     setSkillInput('');
   };
@@ -159,9 +152,6 @@ const Profile = ({ onNavigate }) => {
   };
 
   const validateEmail = (value) => {
-    // Require at least one dot in the domain and an alphabetic TLD (e.g., .com, .co.uk)
-    // Examples allowed: user@site.com, user@sub.site.co
-    // Examples disallowed: user@site, user@site.c, user@site.com123
     const re = /^[^\s@]+@([^\s@.]+\.)+[A-Za-z]{2,}$/;
     return re.test(value.trim());
   };
@@ -173,9 +163,7 @@ const Profile = ({ onNavigate }) => {
   };
 
   const handlePhoneChange = (e) => {
-    // Always coerce to +92 followed by up to 10 digits
     const digits = e.target.value.replace(/\D/g, '');
-    // Remove leading 92 if present to capture local portion
     const local = digits.startsWith('92') ? digits.slice(2) : digits;
     const limited = local.slice(0, 10);
     setPhoneLocal(limited);
@@ -240,7 +228,6 @@ const Profile = ({ onNavigate }) => {
         setCertError(err.message || 'Failed to upload certificates');
       }
     }
-    // reset input value so same files can be re-selected later
     e.target.value = '';
   };
 
@@ -260,25 +247,21 @@ const Profile = ({ onNavigate }) => {
     };
   }, [profilePreview]);
 
-  // Autofill from profile or user endpoint
   useEffect(() => {
     (async () => {
       try {
         const { userId, email: storedEmail } = resolveIdentity();
         if (!userId && !storedEmail) return;
-        // Try profile first
         let prof = null;
         if (userId) {
           prof = await authedGet(`${PROFILE_ENDPOINT_BASE}/${encodeURIComponent(userId)}`);
         }
-        // Fallback to minimal user info
         let me = null;
         if (!prof || Object.keys(prof).length === 0) {
           const qs = userId ? `user_id=${encodeURIComponent(userId)}` : (storedEmail ? `email=${encodeURIComponent(storedEmail)}` : '');
           me = await authedGet(`${API_BASE}/auth/me?${qs}`);
         }
 
-        // Prefer profile fields if present
         if (prof && Object.keys(prof).length) {
           if (prof.full_name) setFullName(String(prof.full_name));
           if (prof.email) setEmail(String(prof.email));
@@ -289,13 +272,11 @@ const Profile = ({ onNavigate }) => {
           }
           if (typeof prof.location === 'string') setLocation(prof.location);
 
-          // Robust experience normalization (accept multiple key styles)
           const years = prof.experience_years ?? prof.experienceYears ?? prof.years ?? prof.exp_years ?? 0;
           const months = prof.experience_months ?? prof.experienceMonths ?? prof.months ?? prof.exp_months ?? 0;
           if (Number.isFinite(Number(years))) setExpYears(Number(years));
           if (Number.isFinite(Number(months))) setExpMonths(Number(months));
 
-          // Robust skills normalization (array or CSV)
           if (Array.isArray(prof.skills)) {
             setSkills(prof.skills.filter(Boolean).map(String));
           } else if (typeof prof.key_skills === 'string' && prof.key_skills.trim()) {
@@ -312,7 +293,6 @@ const Profile = ({ onNavigate }) => {
           return;
         }
 
-        // Else, use /auth/me to fill at least name/email
         if (me) {
           if (me.full_name) setFullName(String(me.full_name));
           if (me.email) setEmail(String(me.email));
@@ -323,7 +303,6 @@ const Profile = ({ onNavigate }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Build payload to send to backend
   const buildPayload = () => {
     const phone = `+92${phoneLocal}`;
     const skillsNormalized = skills.map((s) => String(s).trim()).filter(Boolean);
@@ -341,9 +320,7 @@ const Profile = ({ onNavigate }) => {
     };
   };
 
-  // Save profile to backend (create or update)
   const saveProfile = async () => {
-    // Basic validations
     if (fullNameError || emailError || phoneError) {
       setMessage({ text: 'Fix validation errors before saving', type: 'error' });
       return;
@@ -366,7 +343,6 @@ const Profile = ({ onNavigate }) => {
         throw new Error(msg);
       }
       setMessage({ text: (res.data && res.data.message) || 'Profile saved successfully!', type: 'success' });
-      // Re-fetch to hydrate UI from DB (ensures skills/experience/certificates reflect saved state)
       try {
         const { userId } = resolveIdentity();
         if (userId) {
@@ -391,80 +367,87 @@ const Profile = ({ onNavigate }) => {
 
   return (
     <div className="candidate-dashboard-layout">
-      {/* Navigation Sidebar */}
-      <aside className="candidate-sidebar">
-        <div className="sidebar-header">
-          <span className="app-logo-candidate">Candidate</span> 
-        </div>
-        <nav className="sidebar-nav">
-          <ul>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate'); }}>
-                <span className="material-icons-outlined">dashboard</span>
-                <span className="nav-label">Dashboard</span>
-              </a>
-            </li>
-            <li className="nav-item">
-            <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-jobs'); }}>
-                <span className="material-icons-outlined">work</span>
-                <span className="nav-label">Jobs</span>
-              </a>
-            </li>
-            <li className="nav-item active">
-            <a href="#" onClick={(e) => { e.preventDefault(); go('/profile'); }}>
-                <span className="material-icons-outlined">account_circle</span>
-                <span className="nav-label">My Profile</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/interview'); }}>
-                <span className="material-icons-outlined">event_note</span>
-                <span className="nav-label">My Interviews</span>
-              </a>
-            </li>
-            <li className="nav-item">
-            <a href="#" onClick={(e) => { e.preventDefault(); go('/practice-interview'); }}>
-                <span className="material-icons-outlined">videocam</span>
-                <span className="nav-label">Practice Interview</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-feedback'); }}>
-                <span className="material-icons-outlined">rate_review</span>
-                <span className="nav-label">Feedback</span>
-              </a>
-            </li>
-            <li className="nav-item">
-              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-notifications'); }}>
-                <span className="material-icons-outlined">notifications</span>
-                <span className="nav-label">Notifications</span>
-              </a>
-            </li>
-          </ul>
-        </nav>
-        <div className="sidebar-footer">
-          <ul>
-            <li className="nav-item">
-            <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-settings'); }}>
-                <span className="material-icons-outlined">settings</span>
-                <span className="nav-label">Settings</span>
-              </a>
-            </li>
-            <li className="nav-item">
-            <a href="#" id="logout-link" className="logout-link" onClick={(e) => { e.preventDefault(); const ok = window.confirm('Are you sure you want to logout?'); if (!ok) return; try { localStorage.removeItem('user'); localStorage.removeItem('token'); sessionStorage.removeItem('user'); sessionStorage.removeItem('token'); } catch(_){} window.location.replace('/'); }}>
-                <span className="material-icons-outlined">logout</span>
-                <span className="nav-label">Logout</span>
-              </a>
-            </li>
-          </ul>
-        </div>
-      </aside>
+      {/* Sidebar with wrapper to prevent scrolling */}
+      <div className="sidebar-wrapper">
+        <aside className="candidate-sidebar">
+          <div className="sidebar-header">
+            <span className="app-logo-candidate">Candidate</span> 
+          </div>
+          <div className="sidebar-content">
+            <nav className="sidebar-nav">
+              <ul>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate'); }}>
+                    <span className="material-icons-outlined">dashboard</span>
+                    <span className="nav-label">Dashboard</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-jobs'); }}>
+                    <span className="material-icons-outlined">work</span>
+                    <span className="nav-label">Jobs</span>
+                  </a>
+                </li>
+                <li className="nav-item active">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/profile'); }}>
+                    <span className="material-icons-outlined">account_circle</span>
+                    <span className="nav-label">My Profile</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/interview'); }}>
+                    <span className="material-icons-outlined">event_note</span>
+                    <span className="nav-label">My Interviews</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/practice-interview'); }}>
+                    <span className="material-icons-outlined">videocam</span>
+                    <span className="nav-label">Practice Interview</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-analysis-list'); }}>
+                    <span className="material-icons-outlined">rate_review</span>
+                    <span className="nav-label">Interview Feedback</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-feedback'); }}>
+                    <span className="material-icons-outlined">rate_review</span>
+                    <span className="nav-label">Feedback</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-notifications'); }}>
+                    <span className="material-icons-outlined">notifications</span>
+                    <span className="nav-label">Notifications</span>
+                  </a>
+                </li>
+              </ul>
+            </nav>
+            <div className="sidebar-footer">
+              <ul>
+                <li className="nav-item">
+                  <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-settings'); }}>
+                    <span className="material-icons-outlined">settings</span>
+                    <span className="nav-label">Settings</span>
+                  </a>
+                </li>
+                <li className="nav-item">
+                  <a href="#" id="logout-link" className="logout-link" onClick={(e) => { e.preventDefault(); const ok = window.confirm('Are you sure you want to logout?'); if (!ok) return; try { localStorage.removeItem('user'); localStorage.removeItem('token'); sessionStorage.removeItem('user'); sessionStorage.removeItem('token'); } catch(_){} window.location.replace('/'); }}>
+                    <span className="material-icons-outlined">logout</span>
+                    <span className="nav-label">Logout</span>
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </aside>
+      </div>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <div className="candidate-main-content">
-        {/* Top Bar */}
-
-        {/* Profile Content */}
         <main className="profile-main">
           {message.text && (
             <div className={`inline-status ${message.type === 'success' ? 'success' : 'error'}`} role="status" aria-live="polite" style={{ marginBottom: 12 }}>
@@ -507,7 +490,6 @@ const Profile = ({ onNavigate }) => {
           </div>
 
           <div className="profile-sections">
-            {/* Personal Information */}
             <div className="card profile-section">
               <h3>Personal Information</h3>
               <div className="form-grid">
@@ -569,7 +551,6 @@ const Profile = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* Skills & Experience */}
             <div className="card profile-section">
               <h3>Skills & Experience</h3>
               <div className="form-grid">
@@ -616,7 +597,6 @@ const Profile = ({ onNavigate }) => {
                       onChange={(e) => setSkillInput(e.target.value)}
                       onKeyDown={onSkillKeyDown}
                     />
-                    {/* Suggestions */}
                     {skillInput && (
                       <ul className="skill-suggestions">
                         {skillOptions
@@ -652,12 +632,10 @@ const Profile = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* Resume */}
             <div className="card profile-section">
               <h3>Resume</h3>
               <div className="form-grid">
                 <div className="form-group">
-                 
                   <div className="file-upload-container">
                     <input
                       type="file"
@@ -676,7 +654,6 @@ const Profile = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* Important Certificates */}
             <div className="card profile-section certificates-section">
               <h3>Important Certificates</h3>
               <div className="form-grid">
@@ -718,7 +695,6 @@ const Profile = ({ onNavigate }) => {
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="action-buttons">
             <button className="button button-secondary">Cancel</button>
             <button className="button button-primary" onClick={saveProfile} disabled={saving}>
