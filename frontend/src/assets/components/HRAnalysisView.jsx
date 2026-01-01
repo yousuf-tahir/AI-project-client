@@ -167,7 +167,7 @@ const HRAnalysisView = ({ interviewId, onNavigate, onBack }) => {
         </div>
       </div>
 
-      {/* Overall Metrics */}
+      {/* Overall Metrics - REMOVED AI Model Card */}
       <div className="metrics-grid">
         <div className="metric-card score-card">
           <div className="metric-icon" style={{ backgroundColor: `${getScoreColor(analysis.overall_score)}20` }}>
@@ -195,6 +195,7 @@ const HRAnalysisView = ({ interviewId, onNavigate, onBack }) => {
           </div>
         </div>
 
+        {/* REMOVED AI Model Card
         <div className="metric-card">
           <div className="metric-icon">
             <span className="material-icons-outlined">psychology</span>
@@ -204,6 +205,7 @@ const HRAnalysisView = ({ interviewId, onNavigate, onBack }) => {
             <p className="metric-value-small">{analysis.ai_model}</p>
           </div>
         </div>
+        */}
 
         <div className="metric-card">
           <div className="metric-icon">

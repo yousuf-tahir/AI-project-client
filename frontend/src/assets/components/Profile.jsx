@@ -265,7 +265,10 @@ const Profile = ({ onNavigate }) => {
         if (prof && Object.keys(prof).length) {
           if (prof.full_name) setFullName(String(prof.full_name));
           if (prof.email) setEmail(String(prof.email));
-          if (prof.headline || prof.title || prof.position) setHeadline(String(prof.headline || prof.title || prof.position));
+          // Load field/headline with proper fallback chain
+          if (prof.field || prof.headline || prof.title || prof.position) {
+            setHeadline(String(prof.field || prof.headline || prof.title || prof.position));
+          }
           if (prof.phone && /^\+?\d{12}$/.test(prof.phone)) {
             const local = prof.phone.replace(/\D/g, '').replace(/^92/, '');
             setPhoneLocal(local.slice(0,10));
@@ -308,7 +311,8 @@ const Profile = ({ onNavigate }) => {
     const skillsNormalized = skills.map((s) => String(s).trim()).filter(Boolean);
     return {
       full_name: fullName,
-      headline,
+      headline: headline,  // ✅ Send headline
+      field: headline,     // ✅ Also send as 'field' for consistency
       email,
       phone,
       location,
@@ -337,17 +341,25 @@ const Profile = ({ onNavigate }) => {
       const payload = buildPayload();
       payload.user_id = userId || undefined;
 
+      console.log('💾 Saving profile with payload:', payload); // Debug log
+
       const res = await authedPost(`${PROFILE_ENDPOINT_BASE}`, payload);
       if (!res.ok) {
         const msg = (res.data && (res.data.detail || res.data.message)) || res.text || `HTTP ${res.status}`;
         throw new Error(msg);
       }
       setMessage({ text: (res.data && res.data.message) || 'Profile saved successfully!', type: 'success' });
+      
+      // Refresh profile data after save
       try {
         const { userId } = resolveIdentity();
         if (userId) {
           const prof = await authedGet(`${PROFILE_ENDPOINT_BASE}/${encodeURIComponent(userId)}`);
           if (prof && Object.keys(prof).length) {
+            console.log('📥 Reloaded profile after save:', prof); // Debug log
+            
+            // Reload all fields to confirm save
+            if (prof.field || prof.headline) setHeadline(String(prof.field || prof.headline));
             if (Array.isArray(prof.skills)) setSkills(prof.skills.filter(Boolean));
             if (Number.isFinite(Number(prof.experience_years))) setExpYears(Number(prof.experience_years));
             if (Number.isFinite(Number(prof.experience_months))) setExpMonths(Number(prof.experience_months));
@@ -357,8 +369,11 @@ const Profile = ({ onNavigate }) => {
             }
           }
         }
-      } catch (_) { /* ignore post-save hydrate errors */ }
+      } catch (e) { 
+        console.error('Failed to reload profile after save:', e);
+      }
     } catch (e) {
+      console.error('Save profile error:', e); // Debug log
       setMessage({ text: e.message || 'Failed to save profile', type: 'error' });
     } finally {
       setSaving(false);
@@ -367,7 +382,6 @@ const Profile = ({ onNavigate }) => {
 
   return (
     <div className="candidate-dashboard-layout">
-      {/* Sidebar with wrapper to prevent scrolling */}
       <div className="sidebar-wrapper">
         <aside className="candidate-sidebar">
           <div className="sidebar-header">
@@ -446,7 +460,6 @@ const Profile = ({ onNavigate }) => {
         </aside>
       </div>
 
-      {/* Main Content */}
       <div className="candidate-main-content">
         <main className="profile-main">
           {message.text && (

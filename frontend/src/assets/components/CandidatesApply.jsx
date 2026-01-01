@@ -3,7 +3,7 @@ import "material-icons/iconfont/material-icons.css";
 import "../styles/hrdashboard.css";
 import { API_BASE_URL as API_BASE } from "../../config";
 
-// Simple HTTP client without credentials (like VoiceRecorder)
+// Simple HTTP client without credentials
 const getAuthHeaders = () => {
   try {
     const token = localStorage.getItem('token') || sessionStorage.getItem('token');
@@ -19,7 +19,6 @@ const http = {
     console.log(`🌐 GET ${fullUrl}`);
     try {
       const res = await fetch(fullUrl, { 
-        // No credentials: 'include' - like VoiceRecorder
         headers: { 
           'Accept': 'application/json',
           ...getAuthHeaders()
@@ -42,7 +41,6 @@ const http = {
     try {
       const res = await fetch(fullUrl, { 
         method: 'POST',
-        // No credentials: 'include'
         headers: { 
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -67,7 +65,6 @@ const http = {
     try {
       const res = await fetch(fullUrl, { 
         method: 'PATCH',
-        // No credentials: 'include'
         headers: { 
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -106,7 +103,7 @@ function CandidatesApply({ onNavigate }) {
   const [applications, setApplications] = useState([]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
-  const [modal, setModal] = useState({ open: false, item: null });
+  const [modal, setModal] = useState({ open: false, item: null, profile: null });
 
   // Identify current user and role
   const currentUser = useMemo(() => {
@@ -141,7 +138,7 @@ function CandidatesApply({ onNavigate }) {
     }
   };
 
-  // Try official profile endpoint first, then minimal auth fallback, then local storage
+  // Fetch candidate profile with full details
   const fetchCandidateProfile = async (id) => {
     const paths = [
       `${API_BASE}/api/profile/${encodeURIComponent(id)}`,
@@ -151,46 +148,35 @@ function CandidatesApply({ onNavigate }) {
     for (const url of paths) {
       try {
         const data = await http.get(url);
-        if (data) return data;
+        if (data && Object.keys(data).length > 0) return data;
       } catch (e) { lastErr = e; }
     }
-    // Fallback: try localStorage application record or stored user
+    // Fallback: try localStorage
     try {
-      // From applications list
       const raw = localStorage.getItem('applications');
       const arr = raw ? JSON.parse(raw) : [];
       const rec = (Array.isArray(arr) ? arr : []).find(a => String(a.candidate_id||'') === String(id));
       if (rec) {
         return {
           _id: id,
-          full_name: rec.candidate_name || '',
-          email: rec.candidate_email || '',
-          skills: rec.candidate_skills || [],
-          importantCertificates: rec.candidate_certificates || '',
+          full_name: rec.candidate_name || rec.name || '',
+          email: rec.candidate_email || rec.email || '',
+          field: rec.field || '',
+          experience: rec.experience || '',
+          skills: rec.candidate_skills || rec.skills || [],
+          certificates: rec.candidate_certificates || rec.certificates || '',
+          cv_url: rec.cv || '',
+          profile_pic: rec.profile_pic || '',
         };
       }
     } catch {}
-    try {
-      // From stored user if this browser belongs to the candidate (only in candidate mode)
-      if (!(userRole === 'hr' || modeFromQuery === 'review')) {
-        const rawUser = localStorage.getItem('user') || sessionStorage.getItem('user');
-        const u = rawUser ? JSON.parse(rawUser) : null;
-        if (u && (String(u._id||u.id||u.user_id||'') === String(id))) {
-          return u;
-        }
-      }
-    } catch {}
-    // As a last resort, return a minimal stub to keep UI functional
     return { _id: id };
   };
 
-  // Try multiple endpoints to get job details since backends differ
   const fetchJobDetails = async (id) => {
     const paths = [
-      // Prefer Set Criteria endpoints as requested
       `${API_BASE}/api/job-criteria/${encodeURIComponent(id)}`,
       `${API_BASE}/api/job-criteria?id=${encodeURIComponent(id)}`,
-      // Other possible job endpoints
       `${API_BASE}/hr/jobs/${encodeURIComponent(id)}`,
       `${API_BASE}/api/hr/jobs/${encodeURIComponent(id)}`,
       `${API_BASE}/api/jobs/${encodeURIComponent(id)}`,
@@ -207,12 +193,9 @@ function CandidatesApply({ onNavigate }) {
     throw lastErr || new Error('Job not found');
   };
 
-  // Identify current candidate user id from storage
   const candidateId = useMemo(() => {
     try {
-      // 1) If explicitly provided, use it
       if (candidateIdFromQuery) return candidateIdFromQuery;
-      // 2) If HR is reviewing (role hr or mode=review), infer from local applications
       if (userRole === 'hr' || modeFromQuery === 'review') {
         try {
           const raw = localStorage.getItem('applications');
@@ -220,13 +203,11 @@ function CandidatesApply({ onNavigate }) {
           let filtered = Array.isArray(arr) ? arr : [];
           if (jobId) filtered = filtered.filter(a => String(a.job_id||'')===String(jobId));
           if (hrIdFromQuery) filtered = filtered.filter(a => String(a.hr_id||'')===String(hrIdFromQuery));
-          // take the most recent
           filtered.sort((a,b)=> new Date(b.created_at||0) - new Date(a.created_at||0));
           if (filtered.length) return filtered[0].candidate_id || '';
         } catch {}
         return '';
       }
-      // 3) Default to current user (candidate flow)
       const rawUser = localStorage.getItem("user") || sessionStorage.getItem("user");
       const parsed = rawUser ? JSON.parse(rawUser) : null;
       return parsed?._id || parsed?.id || parsed?.user_id || localStorage.getItem("user_id") || sessionStorage.getItem("user_id") || "";
@@ -235,7 +216,6 @@ function CandidatesApply({ onNavigate }) {
     }
   }, [candidateIdFromQuery, userRole, modeFromQuery, jobId, hrIdFromQuery]);
 
-  // Load job (HR) details and candidate details
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -244,35 +224,28 @@ function CandidatesApply({ onNavigate }) {
         setError("");
         let jobData = null;
         let effectiveJobId = jobId;
-        // If jobId not provided, try to infer from localStorage applications
         try {
           const raw = localStorage.getItem('applications');
           const arr = raw ? JSON.parse(raw) : [];
-          // find latest application record for this candidate (and hr if provided)
           let filtered = (Array.isArray(arr) ? arr : []).filter(a => String(a.candidate_id||'')===String(candidateId) && (!hrIdFromQuery || String(a.hr_id||'')===String(hrIdFromQuery)));
-          // If jobId is already known, narrow down to it so we can bind appRec as well
           if (effectiveJobId) filtered = filtered.filter(a => String(a.job_id||'')===String(effectiveJobId));
           filtered.sort((a,b)=> new Date(b.created_at||0) - new Date(a.created_at||0));
           if (!effectiveJobId && filtered.length) effectiveJobId = filtered[0].job_id;
           if (filtered.length) setAppRec(filtered[0]);
         } catch {}
         if (effectiveJobId) {
-          // GET HR job details with fallbacks
           jobData = await fetchJobDetails(effectiveJobId);
           if (!alive) return;
           setJob(jobData);
           const name = jobData?.hr_name || jobData?.hrName || jobData?.owner_name || jobData?.created_by_name || jobData?.hr?.name || hrFromQuery || "";
           setHrName(name);
         } else {
-          // No job context available; keep job null and continue without error
           setJob(null);
         }
 
-        // GET Candidate profile
         if (!candidateId) throw new Error("Missing candidate id");
         const cand = await fetchCandidateProfile(candidateId);
         if (!alive) return;
-        // Merge with appRec for missing basic fields
         const merged = { ...cand };
         if (!merged.full_name && appRec?.candidate_name) merged.full_name = appRec.candidate_name;
         if (!merged.email && appRec?.candidate_email) merged.email = appRec.candidate_email;
@@ -289,7 +262,6 @@ function CandidatesApply({ onNavigate }) {
     };
   }, [API_BASE, jobId, candidateId, hrFromQuery]);
 
-  // Fetch applications for the logged-in HR
   useEffect(() => {
     let active = true;
     
@@ -303,7 +275,6 @@ function CandidatesApply({ onNavigate }) {
       setError("");
       
       try {
-        // Simple GET request without credentials - like VoiceRecorder
         const url = `${API_BASE}/api/hr/applications?hr_name=${encodeURIComponent(hrNameResolved)}`;
         const data = await http.get(url);
         
@@ -328,7 +299,6 @@ function CandidatesApply({ onNavigate }) {
     return () => { active = false; };
   }, [API_BASE, hrNameResolved]);
 
-  // Filter applications based on search query and status
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (applications || []).filter(a => {
@@ -342,180 +312,195 @@ function CandidatesApply({ onNavigate }) {
     });
   }, [applications, query, statusFilter]);
 
-  // Update application status (Accept/Reject)
   async function updateStatus(item, status) {
-    const endpoint = `${API_BASE}/api/hr/update-status`;
-    const applicationId = item._id || item.id;
+  const endpoint = `${API_BASE}/api/hr/update-status`;
+  const applicationId = item._id || item.id;
+  
+  if (!applicationId) {
+    setError('Missing application ID');
+    return;
+  }
+  
+  try {
+    setSubmitting(true);
+    setError('');
     
-    if (!applicationId) {
-      setError('Missing application ID');
+    const candidateId = item.candidate_id || item.candidateId || item.user?._id;
+    const candidateEmail = (item.email || item.candidate_email || item.user?.email || '').toLowerCase().trim();
+    const hrName = item.hr_name || item.postedBy?.name || hrNameResolved || '';
+    const jobId = item.job_id || item.job?._id || item.jobId || '';
+    
+    const payload = {
+      candidate_id: candidateId,
+      candidate_email: candidateEmail,
+      hr_name: hrName,
+      job_id: jobId,
+      status: status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
+    };
+    
+    console.log('📤 Sending update request to:', endpoint);
+    console.log('📦 Payload:', JSON.stringify(payload, null, 2));
+    
+    const response = await http.patch(endpoint, payload);
+    
+    console.log('✅ Response received:', response);
+    
+    // Check for various success indicators
+    const isSuccess = 
+      response?.success === true || 
+      response?.success === 'true' ||
+      (typeof response?.updated !== 'undefined') ||
+      (typeof response?.matched !== 'undefined') ||
+      response?.message?.toLowerCase().includes('success') ||
+      response?.status === 'success';
+    
+    if (isSuccess) {
+      // Update local component state immediately
+      setApplications(prev => 
+        prev.map(a => (a._id === applicationId || a.id === applicationId ? { ...a, status } : a))
+      );
+      
+      console.log('🔄 Updating localStorage...');
+      
+      // CRITICAL: Update localStorage so candidate can see the status change
+      try {
+        const raw = localStorage.getItem('applications');
+        console.log('📦 Current localStorage applications:', raw ? JSON.parse(raw).length : 0);
+        
+        if (raw) {
+          const allApps = JSON.parse(raw);
+          let updateCount = 0;
+          
+          const updatedApps = allApps.map(a => {
+            // Multiple matching strategies
+            const matchById = a._id === applicationId || a.id === applicationId;
+            const matchByCombo = (
+              String(a.candidate_id) === String(candidateId) && 
+              String(a.job_id) === String(jobId)
+            );
+            const matchByEmail = (
+              candidateEmail && 
+              String(a.candidate_email || '').toLowerCase() === candidateEmail &&
+              String(a.job_id) === String(jobId)
+            );
+            
+            const isMatch = matchById || matchByCombo || matchByEmail;
+            
+            if (isMatch) {
+              updateCount++;
+              console.log(`✏️  Updating application #${updateCount}:`, {
+                old: { id: a._id, status: a.status },
+                new: { id: a._id, status }
+              });
+              return { ...a, status, updated_at: new Date().toISOString() };
+            }
+            return a;
+          });
+          
+          localStorage.setItem('applications', JSON.stringify(updatedApps));
+          console.log(`💾 localStorage updated! Changed ${updateCount} application(s)`);
+          
+          if (updateCount === 0) {
+            console.warn('⚠️  No matching applications found in localStorage to update');
+            console.warn('Searched for:', { candidateId, jobId, applicationId });
+          }
+        } else {
+          console.warn('⚠️  No applications in localStorage');
+        }
+      } catch (e) {
+        console.error('❌ Failed to update localStorage:', e);
+      }
+      
+      // Also try to update myApplications if it exists
+      try {
+        const myApps = localStorage.getItem('myApplications');
+        if (myApps) {
+          const parsed = JSON.parse(myApps);
+          const updatedMyApps = parsed.map(a => {
+            const isMatch = 
+              a._id === applicationId || 
+              a.id === applicationId || 
+              (a.candidate_id === candidateId && a.job_id === jobId);
+            
+            return isMatch ? { ...a, status, updated_at: new Date().toISOString() } : a;
+          });
+          localStorage.setItem('myApplications', JSON.stringify(updatedMyApps));
+          console.log('💾 myApplications updated successfully');
+        }
+      } catch (e) {
+        console.warn('Failed to update myApplications:', e);
+      }
+      
+      // Force a storage event for other tabs/components
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'applications',
+        newValue: localStorage.getItem('applications'),
+        url: window.location.href
+      }));
+      
+      setSuccessMsg(`Application ${status.toLowerCase()} successfully!`);
+      setTimeout(() => setSuccessMsg(''), 3000);
       return;
     }
     
+    console.warn('⚠️  Unexpected response format:', response);
+    throw new Error(`Unexpected response format: ${JSON.stringify(response)}`);
+    
+  } catch (error) {
+    console.error('❌ Update failed with error:', error);
+    setError(error.message || 'Failed to update application status');
+    setTimeout(() => setError(''), 10000);
+  } finally {
+    setSubmitting(false);
+  }
+}
+
+  // Enhanced view profile handler
+  const handleViewProfile = async (item) => {
     try {
-      setSubmitting(true);
-      setError('');
-      
+      setModal({ open: true, item, profile: null });
       const candidateId = item.candidate_id || item.candidateId || item.user?._id;
-      const candidateEmail = (item.email || item.candidate_email || item.user?.email || '').toLowerCase().trim();
-      const hrName = item.hr_name || item.postedBy?.name || hrNameResolved || hrName || '';
-      const jobId = item.job_id || item.job?._id || item.jobId || '';
-      
-      const payload = {
-        candidate_id: candidateId,
-        candidate_email: candidateEmail,
-        hr_name: hrName,
-        job_id: jobId,
-        status: status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
-      };
-      
-      console.log('📤 Sending update request to:', endpoint);
-      console.log('📦 Payload:', JSON.stringify(payload, null, 2));
-      
-      // Simple PATCH request without credentials - like VoiceRecorder
-      const response = await http.patch(endpoint, payload);
-      
-      console.log('✅ Response received:', response);
-      
-      if (response?.success || response?.updated > 0) {
-        setApplications(prev => 
-          prev.map(a => (a._id === applicationId ? { ...a, status } : a))
-        );
-        setSuccessMsg(`Application ${status.toLowerCase()} successfully!`);
-        setTimeout(() => setSuccessMsg(''), 3000);
+      if (!candidateId) {
+        console.warn('No candidate ID found for profile fetch');
         return;
       }
       
-      throw new Error(`Update was not successful. Response: ${JSON.stringify(response)}`);
+      // Fetch full profile details
+      const profile = await fetchCandidateProfile(candidateId);
+      console.log('Fetched profile for modal:', profile);
       
-    } catch (error) {
-      console.error('❌ Update failed with error:', error);
-      setError(error.message || 'Failed to update application status');
-      setTimeout(() => setError(''), 10000);
-    } finally {
-      setSubmitting(false);
+      setModal({ open: true, item, profile });
+    } catch (err) {
+      console.error('Failed to fetch profile details:', err);
+      setModal({ open: true, item, profile: null });
     }
-  }
+  };
 
-  // Robust fetch for HR applications: try multiple endpoints
-  const fetchApplicationsForHR = async (nameRaw) => {
-    const name = String(nameRaw || '').trim();
-    const q = encodeURIComponent(name);
-    const paths = [
-      `${API_BASE}/api/hr/applications?hr_name=${q}`,
-    ];
-    let lastErr = null;
-    for (const url of paths) {
-      try {
-        const data = await http.get(url);
-        if (Array.isArray(data)) return data;
-      } catch (e) { lastErr = e; }
-    }
-    if (lastErr) throw lastErr;
+  const formatExperience = (exp) => {
+    if (typeof exp === 'string') return exp;
+    return exp || 'Not specified';
+  };
+
+  const formatSkills = (skills) => {
+    if (Array.isArray(skills)) return skills;
+    if (typeof skills === 'string') return skills.split(',').map(s => s.trim()).filter(Boolean);
     return [];
   };
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        if (!(userRole === 'hr' || modeFromQuery === 'review')) return;
-        setLoading(true);
-        setError("");
-        const resolved = (hrName || currentUser?.name || currentUser?.full_name || currentUser?.username || hrFromQuery || "eman");
-        const data = await fetchApplicationsForHR(resolved);
-        if (!alive) return;
-        const arr = Array.isArray(data) ? data : [];
-        setApplications(arr);
-        // Hydrate summary candidate details when appRec exists
-        try {
-          const emailKey = (appRec?.candidate_email || candidate?.email || '').toLowerCase();
-          if (emailKey && arr.length) {
-            const hit = arr.find(x => String(x.email||'').toLowerCase() === emailKey);
-            if (hit) {
-              setCandidate(prev => ({
-                ...(prev||{}),
-                full_name: hit.name || prev?.full_name || prev?.name,
-                name: hit.name || prev?.name,
-                email: hit.email || prev?.email,
-                skills: hit.skills || prev?.skills,
-                experience: hit.experience || prev?.experience,
-                cv_url: hit.cv || prev?.cv_url,
-                certificates: hit.certificates || prev?.certificates,
-                profile_pic: hit.profile_pic || prev?.profile_pic,
-              }));
-            }
-          }
-        } catch {}
-      } catch (e) {
-        if (!alive) return;
-        // Don't block the page; show inline error and leave list empty
-        setApplications([]);
-        setError(e?.message || "Failed to load applications");
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, [API_BASE, userRole, modeFromQuery, hrName, hrFromQuery, currentUser]);
-
-  // Re-hydrate summary candidate details whenever applications/appRec/candidate update
-  useEffect(() => {
-    try {
-      if (!(userRole === 'hr' || modeFromQuery === 'review')) return;
-      const arr = Array.isArray(applications) ? applications : [];
-      const emailKey = String(appRec?.candidate_email || candidate?.email || '').toLowerCase();
-      if (!emailKey || !arr.length) return;
-      const hit = arr.find(x => String(x.email||'').toLowerCase() === emailKey);
-      if (!hit) return;
-      setCandidate(prev => ({
-        ...(prev||{}),
-        full_name: hit.name || prev?.full_name || prev?.name,
-        name: hit.name || prev?.name,
-        email: hit.email || prev?.email,
-        skills: hit.skills || prev?.skills,
-        experience: hit.experience || prev?.experience,
-        cv_url: hit.cv || prev?.cv_url,
-        certificates: hit.certificates || prev?.certificates,
-        profile_pic: hit.profile_pic || prev?.profile_pic,
-      }));
-    } catch {}
-  }, [applications, appRec, candidate, userRole, modeFromQuery]);
-
-  const handleApply = async () => {
-    try {
-      setSubmitting(true);
-      setSuccessMsg("");
-      setError("");
-      const payload = {
-        candidate_id: candidateId,
-        job_id: jobId,
-        hr_name: hrName || job?.hr_name || "",
-        hr_id: hrIdFromQuery || job?.hr_id || job?.user_id || job?.owner_id || job?.hr?._id || job?.hr?.id || "",
-      };
-      await http.post(`${API_BASE}/candidate/apply`, payload);
-      setSuccessMsg(`Your application has been submitted to ${hrName || "HR"}.`);
-    } catch (e) {
-      setError(e?.message || "Failed to submit application");
-    } finally {
-      setSubmitting(false);
+  const formatCertificates = (certs) => {
+    if (!certs) return [];
+    if (Array.isArray(certs)) {
+      return certs.map((c, i) => {
+        if (typeof c === 'string') return { name: `Certificate ${i+1}`, url: c };
+        if (typeof c === 'object') return { name: c.name || `Certificate ${i+1}`, url: c.url || c.path || c.link || c.file || '' };
+        return { name: `Certificate ${i+1}`, url: String(c) };
+      }).filter(c => c.url);
     }
+    return [];
   };
-
-  // Basic render helpers
-  const field = (label, value, icon) => (
-    <div style={{ display: "flex", gap: 8, color: "#374151" }}>
-      {icon ? <span className="material-icons-outlined" style={{ fontSize: 18 }}>{icon}</span> : null}
-      <span><strong>{label}:</strong> {value || "Not provided"}</span>
-    </div>
-  );
-
-  // Helper: best-effort job title
-  const jobTitle = (j) => (j?.job_title || j?.title || "");
 
   return (
     <div className="dashboard-layout">
-      {/* HR-style Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-header">
           <span className="app-logo">HR</span> Recruit
@@ -529,8 +514,7 @@ function CandidatesApply({ onNavigate }) {
             <li className="nav-item"><a href="#" onClick={(e) => go('/candidates-apply', e)}><span className="material-icons-outlined">how_to_reg</span><span className="nav-label">Candidates Apply</span></a></li>
             <li className="nav-item"><a href="#" onClick={(e) => go('/hr-profile', e)}><span className="material-icons-outlined">badge</span><span className="nav-label">Profile</span></a></li>
             <li className="nav-item"><a href="#" onClick={(e) => go('/interview-questions', e)}><span className="material-icons-outlined">quiz</span><span className="nav-label">Interview Questions</span></a></li>
-               <li className="nav-item"><a href="#" onClick={(e) => go("/interview-questions", e)}><span className="material-icons-outlined">quiz</span><span className="nav-label">Interview Questions</span></a></li>
-               <li className="nav-item">
+            <li className="nav-item">
               <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('/hr-analysis-list'); }}>
                 <span className="material-icons-outlined">analytics</span>
                 <span className="nav-label">Interview Analysis</span>
@@ -628,7 +612,7 @@ function CandidatesApply({ onNavigate }) {
                           </td>
                           <td style={{ padding: '12px 14px', textAlign: 'left', borderBottom: '1px solid #eee', fontSize: 14, color: '#111827' }}>
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                              <button style={{ padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600, background: '#e5e7eb', color: '#111827' }} onClick={() => setModal({ open: true, item: a })}>View Profile</button>
+                              <button style={{ padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600, background: '#e5e7eb', color: '#111827' }} onClick={() => handleViewProfile(a)}>View Profile</button>
                               <button 
                                 style={{ padding: '8px 12px', borderRadius: 8, border: 'none', cursor: submitting ? 'not-allowed' : 'pointer', fontWeight: 600, background: '#dcfce7', color: '#166534', opacity: submitting ? 0.6 : 1 }} 
                                 onClick={() => updateStatus(a, 'Accepted')}
@@ -655,41 +639,213 @@ function CandidatesApply({ onNavigate }) {
           </section>
 
           {modal.open && modal.item && (
-            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setModal({ open: false, item: null })}>
-              <div style={{ width: 'min(700px, 92vw)', background: '#fff', borderRadius: 12, boxShadow: '0 10px 30px rgba(0,0,0,0.2)', padding: 20 }} onClick={e => e.stopPropagation()}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <div style={{ fontSize: 20, fontWeight: 700 }}>Candidate Profile</div>
-                  <button style={{ padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600, background: '#f3f4f6', color: '#111827' }} onClick={() => setModal({ open: false, item: null })}>Close</button>
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setModal({ open: false, item: null, profile: null })}>
+              <div style={{ width: 'min(800px, 92vw)', maxHeight: '85vh', overflowY: 'auto', background: '#fff', borderRadius: 12, boxShadow: '0 10px 30px rgba(0,0,0,0.2)', padding: 24 }} onClick={e => e.stopPropagation()}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingBottom: 16, borderBottom: '2px solid #e5e7eb' }}>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>Candidate Profile</div>
+                  <button style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600, background: '#f3f4f6', color: '#111827', transition: 'background 0.2s' }} onClick={() => setModal({ open: false, item: null, profile: null })}>Close</button>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+
+                {!modal.profile ? (
+                  <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>Loading profile details...</div>
+                ) : (
                   <div>
-                    <div style={{ fontWeight: 700, marginBottom: 6 }}>{modal.item.name || modal.item.candidate_name || '-'}</div>
-                    <div style={{ color: '#6b7280', marginBottom: 10 }}>{modal.item.field || '-'}</div>
-                    <div style={{ marginBottom: 6 }}><span style={{ padding: '4px 10px', borderRadius: 9999, fontWeight: 600, fontSize: 12, background: '#eef2ff', color: '#3730a3' }}>Experience:</span> <span>{modal.item.experience || '-'}</span></div>
-                    <div style={{ marginBottom: 10 }}>
-                      <div style={{ fontWeight: 600, marginBottom: 6 }}>Skills</div>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        {(Array.isArray(modal.item.skills) ? modal.item.skills : String(modal.item.skills || '').split(',').map(s => s.trim()).filter(Boolean)).map((s, i) => (
-                          <span key={i} style={{ padding: '4px 10px', borderRadius: 9999, fontWeight: 600, fontSize: 12, background: '#eff6ff', color: '#1d4ed8' }}>{s}</span>
-                        ))}
+                    {/* Profile Header Section */}
+                    <div style={{ display: 'flex', alignItems: 'start', gap: 20, marginBottom: 24, padding: 20, background: '#f8fafc', borderRadius: 12 }}>
+                      <div style={{ width: 100, height: 100, borderRadius: '50%', overflow: 'hidden', background: '#e5e7eb', flexShrink: 0 }}>
+                        {(modal.profile.profile_pic || modal.profile.avatar_url || modal.item.profile_pic) ? (
+                          <img 
+                            src={
+                              (modal.profile.profile_pic || modal.profile.avatar_url || modal.item.profile_pic).startsWith('http') 
+                                ? (modal.profile.profile_pic || modal.profile.avatar_url || modal.item.profile_pic) 
+                                : `${API_BASE}${modal.profile.profile_pic || modal.profile.avatar_url || modal.item.profile_pic}`
+                            } 
+                            alt="profile" 
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                          />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, color: '#9ca3af' }}>
+                            <span className="material-icons-outlined">person</span>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 6, color: '#111827' }}>
+                          {modal.profile.full_name || modal.profile.name || modal.item.name || modal.item.candidate_name || 'N/A'}
+                        </h2>
+                        <p style={{ fontSize: 18, color: '#6b7280', marginBottom: 12 }}>
+                          {modal.profile.field || modal.profile.headline || modal.item.field || 'Not specified'}
+                        </p>
+                        <div style={{ display: 'flex', gap: 16, fontSize: 14, color: '#374151' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span className="material-icons-outlined" style={{ fontSize: 18 }}>email</span>
+                            <span>{modal.profile.email || modal.item.email || 'N/A'}</span>
+                          </div>
+                          {(modal.profile.phone || modal.profile.contact) && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span className="material-icons-outlined" style={{ fontSize: 18 }}>phone</span>
+                              <span>{modal.profile.phone || modal.profile.contact}</span>
+                            </div>
+                          )}
+                          {(modal.profile.location) && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span className="material-icons-outlined" style={{ fontSize: 18 }}>location_on</span>
+                              <span>{modal.profile.location}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Two Column Layout */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                      
+                      {/* Left Column */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                        
+                        {/* Experience Section */}
+                        <div style={{ padding: 16, background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb' }}>
+                          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span className="material-icons-outlined" style={{ fontSize: 20 }}>work_history</span>
+                            Experience
+                          </h3>
+                          <p style={{ fontSize: 14, color: '#374151' }}>
+                            {formatExperience(modal.profile.experience || modal.item.experience)}
+                          </p>
+                        </div>
+
+                        {/* Skills Section */}
+                        <div style={{ padding: 16, background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb' }}>
+                          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span className="material-icons-outlined" style={{ fontSize: 20 }}>emoji_objects</span>
+                            Skills
+                          </h3>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {formatSkills(modal.profile.skills || modal.item.skills).length > 0 ? (
+                              formatSkills(modal.profile.skills || modal.item.skills).map((skill, i) => (
+                                <span key={i} style={{ padding: '6px 14px', borderRadius: 20, fontWeight: 600, fontSize: 13, background: '#dbeafe', color: '#1e40af' }}>
+                                  {skill}
+                                </span>
+                              ))
+                            ) : (
+                              <span style={{ fontSize: 14, color: '#6b7280' }}>No skills listed</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Column */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                        
+                        {/* Documents Section */}
+                        <div style={{ padding: 16, background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb' }}>
+                          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: '#111827', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span className="material-icons-outlined" style={{ fontSize: 20 }}>description</span>
+                            Documents
+                          </h3>
+                          
+                          {/* Resume/CV */}
+                          {(modal.profile.cv_url || modal.profile.resume_url || modal.item.cv) ? (
+                            <div style={{ marginBottom: 12 }}>
+                              <a 
+                                href={
+                                  (modal.profile.cv_url || modal.profile.resume_url || modal.item.cv).startsWith('http') 
+                                    ? (modal.profile.cv_url || modal.profile.resume_url || modal.item.cv) 
+                                    : `${API_BASE}${modal.profile.cv_url || modal.profile.resume_url || modal.item.cv}`
+                                } 
+                                target="_blank" 
+                                rel="noreferrer" 
+                                style={{ 
+                                  display: 'inline-flex', 
+                                  alignItems: 'center', 
+                                  gap: 8, 
+                                  padding: '10px 16px', 
+                                  borderRadius: 8, 
+                                  border: 'none', 
+                                  cursor: 'pointer', 
+                                  fontWeight: 600, 
+                                  background: '#e0f2fe', 
+                                  color: '#075985', 
+                                  textDecoration: 'none',
+                                  fontSize: 14,
+                                  transition: 'background 0.2s'
+                                }}
+                              >
+                                <span className="material-icons-outlined" style={{ fontSize: 18 }}>picture_as_pdf</span>
+                                View Resume/CV
+                              </a>
+                            </div>
+                          ) : (
+                            <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 12 }}>No resume uploaded</p>
+                          )}
+
+                          {/* Certificates */}
+                          {formatCertificates(modal.profile.certificates || modal.item.certificates).length > 0 && (
+                            <div>
+                              <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: '#374151' }}>Certificates:</h4>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {formatCertificates(modal.profile.certificates || modal.item.certificates).map((cert, i) => (
+                                  <a 
+                                    key={i} 
+                                    href={cert.url.startsWith('http') ? cert.url : `${API_BASE}${cert.url}`} 
+                                    target="_blank" 
+                                    rel="noreferrer" 
+                                    style={{ 
+                                      display: 'inline-flex', 
+                                      alignItems: 'center', 
+                                      gap: 8, 
+                                      padding: '8px 12px', 
+                                      borderRadius: 8, 
+                                      border: '1px solid #e5e7eb', 
+                                      cursor: 'pointer', 
+                                      fontWeight: 500, 
+                                      background: '#fff', 
+                                      color: '#374151', 
+                                      textDecoration: 'none',
+                                      fontSize: 13,
+                                      transition: 'background 0.2s'
+                                    }}
+                                  >
+                                    <span className="material-icons-outlined" style={{ fontSize: 16 }}>verified</span>
+                                    {cert.name}
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Application Info Section */}
+                        <div style={{ padding: 16, background: '#fef3c7', borderRadius: 10, border: '1px solid #fcd34d' }}>
+                          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: '#92400e', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span className="material-icons-outlined" style={{ fontSize: 20 }}>info</span>
+                            Application Details
+                          </h3>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14 }}>
+                            <div><strong>Job Title:</strong> {modal.item.job_title || 'N/A'}</div>
+                            <div><strong>Applied On:</strong> {modal.item.applied_at ? new Date(modal.item.applied_at).toLocaleDateString() : 'N/A'}</div>
+                            <div>
+                              <strong>Status:</strong> 
+                              <span style={{ 
+                                marginLeft: 8,
+                                padding: '4px 10px', 
+                                borderRadius: 12, 
+                                fontWeight: 600, 
+                                fontSize: 12,
+                                color: modal.item.status?.toLowerCase() === 'accepted' ? '#166534' : 
+                                       modal.item.status?.toLowerCase() === 'rejected' ? '#991b1b' : '#92400e',
+                                background: modal.item.status?.toLowerCase() === 'accepted' ? '#dcfce7' : 
+                                           modal.item.status?.toLowerCase() === 'rejected' ? '#fee2e2' : '#fef3c7'
+                              }}>
+                                {modal.item.status || 'Pending'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
-                  <div>
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                      {modal.item.cv || modal.item.cv_url ? (
-                        <a href={(modal.item.cv_url || modal.item.cv).startsWith('http') ? (modal.item.cv_url || modal.item.cv) : `${API_BASE}${modal.item.cv_url || modal.item.cv}`} target="_blank" rel="noreferrer" style={{ padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600, background: '#e0f2fe', color: '#075985', textDecoration: 'none', display: 'inline-block' }}>View CV</a>
-                      ) : null}
-                      {Array.isArray(modal.item.certificates || modal.item.certificates_url) && (modal.item.certificates || modal.item.certificates_url).length > 0 ? (
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {(modal.item.certificates || modal.item.certificates_url).map((c, i) => (
-                            <a key={i} href={(typeof c === 'string' ? c : c?.url || '').startsWith('http') ? (typeof c === 'string' ? c : c?.url) : `${API_BASE}${typeof c === 'string' ? c : (c?.url || '')}`} target="_blank" rel="noreferrer" style={{ padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600, background: '#ecfeff', color: '#155e75', textDecoration: 'none' }}>Cert {i+1}</a>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           )}

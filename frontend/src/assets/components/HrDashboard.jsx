@@ -1,12 +1,15 @@
 import React, { useEffect, useState, useCallback } from "react";
 import "material-icons/iconfont/material-icons.css";
 import "../styles/hrdashboard.css";
+
 const HrDashboard = ({ onNavigate }) => {
   const [hrName, setHrName] = useState(null);
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [candidateCount, setCandidateCount] = useState(0);
   const [interviewCount, setInterviewCount] = useState(0);
   const [feedbackCount, setFeedbackCount] = useState(0);
+  const [matchingCandidates, setMatchingCandidates] = useState([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(true);
   const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
   const tryParseUser = (raw) => {
@@ -15,6 +18,60 @@ const HrDashboard = ({ onNavigate }) => {
     } catch {
       return null;
     }
+  };
+
+  // Enhanced function to fetch full candidate profile details
+  const fetchCandidateProfile = async (candidateId) => {
+    const paths = [
+      `${API_BASE}/api/profile/${encodeURIComponent(candidateId)}`,
+      `${API_BASE}/auth/me?user_id=${encodeURIComponent(candidateId)}`,
+    ];
+    
+    let lastErr = null;
+    for (const url of paths) {
+      try {
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json'
+          }
+        });
+        
+        if (!response.ok) continue;
+        
+        const data = await response.json();
+        if (data && Object.keys(data).length > 0) {
+          console.log('Fetched candidate profile:', data);
+          return data;
+        }
+      } catch (e) { 
+        lastErr = e; 
+      }
+    }
+    
+    // Fallback: try localStorage
+    try {
+      const raw = localStorage.getItem('applications');
+      const arr = raw ? JSON.parse(raw) : [];
+      const rec = (Array.isArray(arr) ? arr : []).find(a => String(a.candidate_id||'') === String(candidateId));
+      if (rec) {
+        return {
+          _id: candidateId,
+          full_name: rec.candidate_name || rec.name || '',
+          email: rec.candidate_email || rec.email || '',
+          field: rec.field || '',
+          location: rec.location || '',
+          experience: rec.experience || '',
+          skills: rec.candidate_skills || rec.skills || [],
+          certificates: rec.candidate_certificates || rec.certificates || '',
+          cv_url: rec.cv || '',
+          profile_pic: rec.profile_pic || '',
+        };
+      }
+    } catch {}
+    
+    return { _id: candidateId };
   };
 
   const fetchInterviewCount = async () => {
@@ -107,16 +164,75 @@ const HrDashboard = ({ onNavigate }) => {
     }
   }, [API_BASE]);
 
+  const fetchMatchingCandidates = useCallback(async () => {
+    try {
+      setLoadingCandidates(true);
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
+      console.log('Fetching matching candidates from:', `${API_BASE}/api/admin/candidates`);
+
+      const response = await fetch(`${API_BASE}/api/admin/candidates`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Candidates data:', data);
+
+      const candidates = Array.isArray(data) ? data : data?.data || [];
+      
+      // Take top 3 candidates
+      const topCandidates = candidates.slice(0, 3);
+      
+      // Fetch full profile details for each candidate to get field and location
+      const enrichedCandidates = await Promise.all(
+        topCandidates.map(async (candidate) => {
+          const candidateId = candidate._id || candidate.id || candidate.candidate_id;
+          if (!candidateId) return candidate;
+          
+          try {
+            const profile = await fetchCandidateProfile(candidateId);
+            return {
+              ...candidate,
+              field: profile.field || candidate.field || candidate.domain || candidate.category || candidate.position || candidate.title || 'N/A',
+              location: profile.location || candidate.location || 'N/A',
+              full_name: profile.full_name || candidate.name || candidate.full_name || 'Unknown',
+              email: profile.email || candidate.email || '',
+            };
+          } catch (err) {
+            console.error(`Failed to fetch profile for candidate ${candidateId}:`, err);
+            return candidate;
+          }
+        })
+      );
+
+      console.log('Enriched candidates for display:', enrichedCandidates);
+      setMatchingCandidates(enrichedCandidates);
+    } catch (error) {
+      console.error('Error fetching matching candidates:', error);
+      setMatchingCandidates([]);
+    } finally {
+      setLoadingCandidates(false);
+    }
+  }, [API_BASE]);
+
   useEffect(() => {
     const fetchData = async () => {
       await Promise.all([
         fetchCandidateCount(),
         fetchInterviewCount(),
-        fetchFeedbackCount()
+        fetchFeedbackCount(),
+        fetchMatchingCandidates()
       ]);
     };
     fetchData();
-  }, [fetchCandidateCount, fetchInterviewCount, fetchFeedbackCount]);
+  }, [fetchFeedbackCount, fetchMatchingCandidates]);
 
   useEffect(() => {
     const storedFullName =
@@ -195,6 +311,18 @@ const HrDashboard = ({ onNavigate }) => {
     } else {
       window.location.href = path;
     }
+  };
+
+  const getCandidateName = (candidate) => {
+    return candidate.full_name || candidate.name || 'Unknown';
+  };
+
+  const getCandidateField = (candidate) => {
+    return candidate.field || 'N/A';
+  };
+
+  const getCandidateLocation = (candidate) => {
+    return candidate.location || 'N/A';
   };
 
   return (
@@ -393,7 +521,7 @@ const HrDashboard = ({ onNavigate }) => {
               </div>
               <div className="stat-content">
                 <h3>Matches Found</h3>
-                <p>105</p>
+                <p>{matchingCandidates.length}</p>
               </div>
             </div>
 
@@ -411,87 +539,85 @@ const HrDashboard = ({ onNavigate }) => {
           <section className="card list-card candidates-table-card">
             <h3>Matching Candidates</h3>
             <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Candidate Name</th>
-                    <th>Field</th>
-                    <th>Match %</th>
-                    <th>Score</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>
-                      <div className="candidate-info">
-                        <img
-                          src="placeholder-avatar-1.png"
-                          alt="Candidate Avatar"
-                          className="candidate-avatar"
-                        />
-                        <span>Ben Carter</span>
-                      </div>
-                    </td>
-                    <td>Software Engineer</td>
-                    <td>
-                      <span className="match-percent high">92%</span>
-                    </td>
-                    <td>8.5 / 10</td>
-                    <td>
-                      <button className="button button-secondary">
-                        View Profile
-                      </button>
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td>
-                      <div className="candidate-info">
-                        <img
-                          src="placeholder-avatar-2.png"
-                          alt="Candidate Avatar"
-                          className="candidate-avatar"
-                        />
-                        <span>Olivia Green</span>
-                      </div>
-                    </td>
-                    <td>UX Designer</td>
-                    <td>
-                      <span className="match-percent medium">78%</span>
-                    </td>
-                    <td>7.2 / 10</td>
-                    <td>
-                      <button className="button button-secondary">
-                        View Profile
-                      </button>
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td>
-                      <div className="candidate-info">
-                        <img
-                          src="placeholder-avatar-3.png"
-                          alt="Candidate Avatar"
-                          className="candidate-avatar"
-                        />
-                        <span>Mark Roberts</span>
-                      </div>
-                    </td>
-                    <td>Data Scientist</td>
-                    <td>
-                      <span className="match-percent high">89%</span>
-                    </td>
-                    <td>8.1 / 10</td>
-                    <td>
-                      <button className="button button-secondary">
-                        View Profile
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              {loadingCandidates ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
+                  Loading candidates...
+                </div>
+              ) : matchingCandidates.length === 0 ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
+                  No matching candidates found
+                </div>
+              ) : (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Candidate Name</th>
+                      <th>Field</th>
+                      <th>Location</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {matchingCandidates.map((candidate, index) => {
+                      const initials = getCandidateName(candidate)
+                        .split(' ')
+                        .map(p => p[0])
+                        .slice(0, 2)
+                        .join('')
+                        .toUpperCase();
+                      
+                      return (
+                        <tr key={candidate._id || candidate.id || index}>
+                          <td>
+                            <div className="candidate-info">
+                              <div 
+                                className="candidate-avatar" 
+                                style={{ 
+                                  width: '36px', 
+                                  height: '36px', 
+                                  borderRadius: '50%', 
+                                  background: '#e0f2fe', 
+                                  color: '#0369a1', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  justifyContent: 'center', 
+                                  fontWeight: 700,
+                                  fontSize: '14px'
+                                }}
+                              >
+                                {initials}
+                              </div>
+                              <span>{getCandidateName(candidate)}</span>
+                            </div>
+                          </td>
+                          <td>{getCandidateField(candidate)}</td>
+                          <td>
+                            <span style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: '6px',
+                              color: '#475569' 
+                            }}>
+                              <span className="material-icons-outlined" style={{ fontSize: '16px' }}>
+                                location_on
+                              </span>
+                              {getCandidateLocation(candidate)}
+                            </span>
+                          </td>
+                          <td>
+                            <button 
+                              className="button button-secondary"
+                              onClick={() => onNavigate && onNavigate('/candidates')}
+                            >
+                              View Profile
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
             </div>
           </section>
 

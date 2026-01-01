@@ -40,8 +40,9 @@ async def upsert_profile(payload: Dict[str, Any], current_user: Dict[str, Any] =
     it will be updated; otherwise it will be created.
 
     Expected body (subset is fine):
-      { user_id, full_name, email, phone, location, experience_years, experience_months,
-        skills: [str], resume_name, certificates: [{name,url}] }
+      { user_id, full_name, email, phone, location, headline, field, 
+        experience_years, experience_months, skills: [str], 
+        resume_name, certificates: [{name,url}], avatar_url }
     """
     db = await Database.get_db()
     if db is None:
@@ -53,16 +54,19 @@ async def upsert_profile(payload: Dict[str, Any], current_user: Dict[str, Any] =
 
     now = datetime.utcnow()
 
-    # Build set document
+    # Build set document with ALL fields
     doc: Dict[str, Any] = {
         "full_name": payload.get("full_name"),
         "email": payload.get("email"),
         "phone": payload.get("phone"),
         "location": payload.get("location"),
+        "headline": payload.get("headline"),  # Added
+        "field": payload.get("field") or payload.get("headline"),  # Added with fallback
         "experience_years": int(payload.get("experience_years") or 0),
         "experience_months": int(payload.get("experience_months") or 0),
         "skills": payload.get("skills") or [],
         "resume_name": payload.get("resume_name") or None,
+        "resume_url": payload.get("resume_url") or None,  # Added
         "certificates": payload.get("certificates") or [],
         "avatar_url": payload.get("avatar_url") or None,
         "updated_at": now,
@@ -92,7 +96,9 @@ async def replace_profile(user_id: str, payload: Dict[str, Any], current_user: D
     payload["user_id"] = _oid(user_id)
     payload["updated_at"] = now
     payload.setdefault("created_at", now)
-    # allow avatar_url replacement too
+    # Ensure field is saved
+    if "headline" in payload and "field" not in payload:
+        payload["field"] = payload["headline"]
 
     await db.profiles.replace_one({"user_id": _oid(user_id)}, payload, upsert=True)
     return {"message": "Profile saved"}

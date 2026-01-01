@@ -122,14 +122,36 @@ def _normalize_profile(profile: Dict[str, Any], fallback: Dict[str, Any]) -> Dic
 
 
 @router.get("/applications")
-async def list_applications(hr_name: str = Query(..., alias="hr_name")) -> List[dict]:
+async def list_applications(
+    hr_name: Optional[str] = Query(None, alias="hr_name"),  # Changed to Optional
+    candidate_id: Optional[str] = Query(None, alias="candidate_id")  # Added parameter
+) -> List[dict]:
     try:
         db = await Database.get_db()
         apps_col = db["applications"]
-        regex = {"$regex": re.escape(hr_name), "$options": "i"}
+        
+        # Build the match query based on provided parameters
+        match_query = {}
+        
+        if hr_name:
+            # Use regex for case-insensitive matching of hr_name
+            match_query["hr_name"] = {"$regex": re.escape(hr_name), "$options": "i"}
+        
+        if candidate_id:
+            match_query["candidate_id"] = candidate_id
+        
+        # Require at least one parameter for security
+        if not match_query:
+            raise HTTPException(
+                status_code=400, 
+                detail="Either 'hr_name' or 'candidate_id' parameter is required"
+            )
+        
+        print(f"🔍 Querying applications with match_query: {match_query}")
+        print(f"📊 Parameters: hr_name={hr_name}, candidate_id={candidate_id}")
 
         pipeline = [
-            {"$match": {"hr_name": regex}},
+            {"$match": match_query},
             {"$addFields": {
                 "candidate_oid": {"$convert": {"input": "$candidate_id", "to": "objectId", "onError": None, "onNull": None}},
                 "job_oid": {"$convert": {"input": "$job_id", "to": "objectId", "onError": None, "onNull": None}},
@@ -162,8 +184,11 @@ async def list_applications(hr_name: str = Query(..., alias="hr_name")) -> List[
                 "profile_pic": {"$ifNull": ["$profile.avatar_url", None]},
                 "job_title": {"$ifNull": ["$job.job_title", None]},
                 "job_description": {"$ifNull": ["$job.description", None]},
+                "hr_name": "$hr_name",  # Added this field
                 "status": {"$ifNull": ["$status", "Pending"]},
                 "applied_at": {"$ifNull": ["$applied_at", None]},
+                "updated_at": "$updated_at",  # Added this field
+                "_id": {"$toString": "$_id"},  # Added for reference
             }},
         ]
 
@@ -198,10 +223,14 @@ async def list_applications(hr_name: str = Query(..., alias="hr_name")) -> List[
                 if isinstance(v, ObjectId):
                     doc[k] = str(v)
             items.append(doc)
+        
+        print(f"✅ Found {len(items)} applications")
         return items
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"❌ Error in list_applications: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.patch("/update-status")
 async def update_status(body: UpdateStatus):
@@ -212,53 +241,76 @@ async def update_status(body: UpdateStatus):
         
         db = await Database.get_db()
         apps_col = db["applications"]
+        profiles_col = db["profiles"]
         
         # Build query to find the application
         query: Dict[str, Any] = {}
         
-        # First, try to find by candidate_email by looking up in profiles
-        if body.candidate_email:
+        # Step 1: Determine candidate_id
+        candidate_id = body.candidate_id
+        
+        if not candidate_id and body.candidate_email:
             # Look up candidate_id from profiles collection using email
-            profiles_col = db["profiles"]
             profile = await profiles_col.find_one(
-                {"email": body.candidate_email}, 
+                {"email": {"$regex": f"^{re.escape(body.candidate_email)}$", "$options": "i"}}, 
                 {"user_id": 1}
             )
             if profile and profile.get("user_id"):
-                query["candidate_id"] = str(profile["user_id"])
-            else:
-                # If no profile found with that email, try direct match (case-insensitive)
-                query["candidate_email"] = {"$regex": f"^{re.escape(body.candidate_email)}$", "$options": "i"}
+                candidate_id = str(profile["user_id"])
         
-        # If candidate_id is provided or we found it from email lookup
-        elif body.candidate_id:
-            query["candidate_id"] = body.candidate_id
-        else:
-            raise HTTPException(status_code=400, detail="candidate_email or candidate_id is required")
-
-        # Add HR name filter (case-insensitive)
+        if not candidate_id:
+            raise HTTPException(status_code=400, detail="Could not identify candidate")
+        
+        # Step 2: Build query with candidate_id
+        query["candidate_id"] = candidate_id
+        
+        # Step 3: Add HR name filter (case-insensitive) if provided
         if body.hr_name:
             query["hr_name"] = {"$regex": f"^{re.escape(body.hr_name)}$", "$options": "i"}
         
-        # Add job_id filter if provided
+        # Step 4: Add job_id filter if provided
         if body.job_id:
             query["job_id"] = body.job_id
 
-        print(f"🔍 Update query: {query}")  # Debug logging
+        print(f"🔍 Update query: {query}")
+        print(f"🎯 Looking for applications with candidate_id={candidate_id}, hr_name={body.hr_name}, job_id={body.job_id}")
         
-        # Update the application
-        res = await apps_col.update_many(query, {"$set": {"status": new_status}})
+        # Check if any applications exist with this query
+        count = await apps_col.count_documents(query)
+        print(f"📊 Found {count} matching applications")
         
-        print(f"📊 Update result: matched={res.matched_count}, modified={res.modified_count}")  # Debug logging
+        if count == 0:
+            # Try to find applications with any criteria to help debug
+            any_by_candidate = await apps_col.count_documents({"candidate_id": candidate_id})
+            any_by_hr = await apps_col.count_documents({"hr_name": {"$regex": f"^{re.escape(body.hr_name)}$", "$options": "i"}}) if body.hr_name else 0
+            print(f"📊 Debug: {any_by_candidate} apps for candidate, {any_by_hr} apps for HR")
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No matching application found. Found {any_by_candidate} applications for this candidate and {any_by_hr} for this HR."
+            )
         
-        if res.matched_count == 0:
-            raise HTTPException(status_code=404, detail="No matching application found")
-            
-        return {"updated": res.modified_count}
+        # Update the application(s)
+        update_data = {
+            "$set": {
+                "status": new_status,
+                "updated_at": datetime.utcnow().isoformat() + "Z"
+            }
+        }
+        
+        res = await apps_col.update_many(query, update_data)
+        
+        print(f"✅ Update result: matched={res.matched_count}, modified={res.modified_count}")
+        
+        return {
+            "success": True,
+            "updated": res.modified_count,
+            "matched": res.matched_count
+        }
         
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ Error in update_status: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app_router.post("/applications")
