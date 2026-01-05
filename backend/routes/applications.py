@@ -337,3 +337,40 @@ async def create_application(body: ApplicationCreate):
         return {"message": "Application submitted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/applications/{application_id}")
+async def delete_application(application_id: str):
+    """
+    Delete an application by ID
+    """
+    try:
+        db = await Database.get_db()
+        apps_col = db["applications"]
+        
+        # Try to delete with string ID first
+        result = await apps_col.delete_one({"_id": application_id})
+        
+        # If not found, try with ObjectId
+        if result.deleted_count == 0:
+            try:
+                from bson import ObjectId
+                result = await apps_col.delete_one({"_id": ObjectId(application_id)})
+            except:
+                pass
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Application not found")
+        
+        print(f"✅ Deleted application: {application_id}")
+        
+        return {
+            "success": True,
+            "message": "Application deleted successfully",
+            "deleted_id": application_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error deleting application: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete application: {str(e)}")

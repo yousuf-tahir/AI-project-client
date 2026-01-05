@@ -45,7 +45,8 @@ const Interview = ({ onNavigate }) => {
 
       try {
         console.log('Fetching interviews for candidate:', candidateId);
-        const resp = await fetch(`${API_BASE}/api/interview-rooms/candidate/${candidateId}/upcoming`);
+        // Fetch ALL interviews for the candidate (not just upcoming)
+        const resp = await fetch(`${API_BASE}/api/interviews?candidate_id=${candidateId}`);
 
         if (!resp.ok) {
           const errorText = await resp.text();

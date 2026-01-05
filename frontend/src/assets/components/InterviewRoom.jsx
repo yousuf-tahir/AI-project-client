@@ -160,7 +160,7 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
         setTranscribing(false);
         isSubmittingRef.current = false;
 
-        startSyncedTimer(10, () => {
+        startSyncedTimer(20, () => {
             if (mountedRef.current) {
                 startAnsweringPhase();
             }
@@ -173,7 +173,7 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
 
         setInterviewState('answering');
 
-        startSyncedTimer(30, () => {
+        startSyncedTimer(40, () => {
             if (mountedRef.current) {
                 console.log('[INTERVIEW] Auto-submitting answer due to timer completion');
                 submitAnswer();
@@ -542,7 +542,7 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
                 setTranscribing(false);
                 isSubmittingRef.current = false;
 
-                startSyncedTimer(10, () => {
+                startSyncedTimer(20, () => {
                     if (mountedRef.current) {
                         startAnsweringPhase();
                     }
@@ -591,7 +591,7 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
 
             // Start reading phase immediately
             setInterviewState('reading');
-            setTimeLeft(10);
+            setTimeLeft(20);
             console.log('[SOCKET] Starting reading phase for Q' + (nextIndex + 1));
 
             // ✅ CRITICAL FIX: Inline timer logic to avoid stale closures
@@ -607,7 +607,7 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
                 }
 
                 const elapsed = Math.floor((Date.now() - readingStartTime) / 1000);
-                const remaining = Math.max(0, 10 - elapsed);
+                const remaining = Math.max(0, 20 - elapsed);
                 setTimeLeft(remaining);
 
                 if (remaining <= 0) {
@@ -619,7 +619,7 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
 
                     // Start answering phase
                     setInterviewState('answering');
-                    setTimeLeft(30);
+                    setTimeLeft(40);
                     console.log('[SOCKET] Starting answering phase for Q' + (nextIndex + 1));
 
                     const answeringStartTime = Date.now();
@@ -634,7 +634,7 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
                         }
 
                         const elapsedAnswering = Math.floor((Date.now() - answeringStartTime) / 1000);
-                        const remainingAnswering = Math.max(0, 30 - elapsedAnswering);
+                        const remainingAnswering = Math.max(0, 40 - elapsedAnswering);
                         setTimeLeft(remainingAnswering);
 
                         if (remainingAnswering <= 0) {
@@ -865,7 +865,7 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
                                         <div
                                             className="progress-fill"
                                             style={{
-                                                width: `${(timeLeft / (interviewState === 'reading' ? 8 : 30)) * 100}%`
+                                                width: `${(timeLeft / (interviewState === 'reading' ? 20 : 40)) * 100}%`
                                             }}
                                         />
                                     </div>

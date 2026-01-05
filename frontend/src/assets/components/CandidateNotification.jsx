@@ -71,158 +71,240 @@ const CandidateNotification = ({ onNavigate }) => {
   };
 
   const fetchAll = async () => {
-  setLoading(true);
-  setErr("");
-  
-  try {
-    const candidateId = getCurrentUserId();
-    const candidateEmail = getCurrentUserEmail();
+    setLoading(true);
+    setErr("");
     
-    if (!candidateId && !candidateEmail) {
-      throw new Error("Unable to identify current user");
-    }
-
-    console.log('🔍 Fetching applications for candidate:', { candidateId, candidateEmail });
-
-    let apps = [];
-
-    // TRY TO FETCH FROM SERVER FIRST - USE THE HR ENDPOINT!
     try {
-      console.log('🌐 Attempting to fetch from server...');
+      const candidateId = getCurrentUserId();
+      const candidateEmail = getCurrentUserEmail();
       
-      // CHANGE THIS LINE - Use the HR endpoint with candidate_id
-      const response = await fetch(`${API_BASE}/api/hr/applications?candidate_id=${candidateId}`, {
-        headers: authHeaders()
-      });
-      
-      if (response.ok) {
-        const serverApps = await response.json();
-        console.log('✅ Fetched from server:', serverApps.length, 'applications');
-        console.log('📋 Server application statuses:', serverApps.map(a => ({ job: a.job_title, status: a.status })));
-        
-        if (Array.isArray(serverApps) && serverApps.length > 0) {
-          // Save server data to localStorage
-          localStorage.setItem('candidateApplications', JSON.stringify(serverApps));
-          apps = serverApps;
-          console.log('💾 Saved server data to localStorage');
-        }
-      } else {
-        console.log('⚠️ Server response not OK:', response.status);
+      if (!candidateId && !candidateEmail) {
+        throw new Error("Unable to identify current user");
       }
-    } catch (serverError) {
-      console.log('⚠️ Could not fetch from server:', serverError.message);
-    }
 
-    // If server fetch failed or returned no data, use localStorage
-    if (apps.length === 0) {
+      console.log('🔍 Fetching notifications for candidate:', { candidateId, candidateEmail });
+
+      let apps = [];
+      let interviews = [];
+
+      // ============ FETCH APPLICATIONS ============
       try {
-        const candidateApps = localStorage.getItem('candidateApplications');
-        if (candidateApps) {
-          const parsed = JSON.parse(candidateApps);
-          if (Array.isArray(parsed)) {
-            apps = parsed;
-            console.log('📦 Loaded from candidateApplications:', apps.length, 'applications');
-          }
-        }
+        console.log('🌐 Attempting to fetch applications from server...');
         
-        if (apps.length === 0) {
-          const raw = localStorage.getItem('applications');
-          if (raw) {
-            const allApps = JSON.parse(raw);
-            if (Array.isArray(allApps)) {
-              apps = allApps.filter(app => {
-                const matchById = String(app.candidate_id || '') === String(candidateId);
-                const matchByEmail = 
-                  String(app.email || '').toLowerCase() === candidateEmail ||
-                  String(app.candidate_email || '').toLowerCase() === candidateEmail;
-                
-                return matchById || matchByEmail;
-              });
-              console.log('📦 Loaded from applications localStorage:', apps.length, 'applications');
+        const response = await fetch(`${API_BASE}/api/hr/applications?candidate_id=${candidateId}`, {
+          headers: authHeaders()
+        });
+        
+        if (response.ok) {
+          const serverApps = await response.json();
+          console.log('✅ Fetched from server:', serverApps.length, 'applications');
+          
+          if (Array.isArray(serverApps) && serverApps.length > 0) {
+            localStorage.setItem('candidateApplications', JSON.stringify(serverApps));
+            apps = serverApps;
+            console.log('💾 Saved server data to localStorage');
+          }
+        } else {
+          console.log('⚠️ Server response not OK:', response.status);
+        }
+      } catch (serverError) {
+        console.log('⚠️ Could not fetch from server:', serverError.message);
+      }
+
+      // Fallback to localStorage for applications
+      if (apps.length === 0) {
+        try {
+          const candidateApps = localStorage.getItem('candidateApplications');
+          if (candidateApps) {
+            const parsed = JSON.parse(candidateApps);
+            if (Array.isArray(parsed)) {
+              apps = parsed;
+              console.log('📦 Loaded from candidateApplications:', apps.length, 'applications');
             }
           }
+          
+          if (apps.length === 0) {
+            const raw = localStorage.getItem('applications');
+            if (raw) {
+              const allApps = JSON.parse(raw);
+              if (Array.isArray(allApps)) {
+                apps = allApps.filter(app => {
+                  const matchById = String(app.candidate_id || '') === String(candidateId);
+                  const matchByEmail = 
+                    String(app.email || '').toLowerCase() === candidateEmail ||
+                    String(app.candidate_email || '').toLowerCase() === candidateEmail;
+                  
+                  return matchById || matchByEmail;
+                });
+                console.log('📦 Loaded from applications localStorage:', apps.length, 'applications');
+              }
+            }
+          }
+        } catch (e) {
+          console.error('❌ Failed to load applications from localStorage:', e);
+        }
+      }
+
+      // ============ FETCH INTERVIEWS ============
+      try {
+        console.log('🌐 Fetching scheduled interviews...');
+        const interviewResponse = await fetch(`${API_BASE}/api/interviews?candidate_id=${candidateId}`, {
+          headers: authHeaders()
+        });
+
+        if (interviewResponse.ok) {
+          const interviewData = await interviewResponse.json();
+          console.log('✅ Fetched interviews:', interviewData.length);
+          
+          if (Array.isArray(interviewData)) {
+            interviews = interviewData;
+          }
+        } else {
+          console.log('⚠️ Interview fetch failed:', interviewResponse.status);
+        }
+      } catch (interviewError) {
+        console.error('❌ Error fetching interviews:', interviewError);
+      }
+
+      console.log('📊 Final data:', { applications: apps.length, interviews: interviews.length });
+      
+      // ============ TRANSFORM APPLICATIONS INTO NOTIFICATIONS ============
+      const appNotifications = apps.map((app) => {
+        const statusRaw = app.status || 'Pending';
+        const status = String(statusRaw).toLowerCase();
+        const isAccepted = status === 'accepted';
+        const isRejected = status === 'rejected';
+        const isPending = status === 'pending';
+        
+        let type = 'application';
+        let icon = 'send';
+        let iconBg = '#dbeafe';
+        let iconColor = '#2563eb';
+        let title = 'Application Submitted';
+        let message = `Your application for ${app.job_title || 'the position'} has been submitted and is under review.`;
+        
+        if (isAccepted) {
+          type = 'accepted';
+          icon = 'check_circle';
+          iconBg = '#dcfce7';
+          iconColor = '#16a34a';
+          title = 'Application Accepted! 🎉';
+          message = `Congratulations! Your application for ${app.job_title || 'the position'} has been accepted.`;
+        } else if (isRejected) {
+          type = 'rejected';
+          icon = 'cancel';
+          iconBg = '#fee2e2';
+          iconColor = '#dc2626';
+          title = 'Application Status Update';
+          message = `Thank you for your interest in ${app.job_title || 'the position'}. Unfortunately, we have decided to move forward with other candidates.`;
         }
         
-        console.log('📋 Application statuses:', apps.map(a => ({ job: a.job_title, status: a.status })));
-      } catch (e) {
-        console.error('❌ Failed to load from localStorage:', e);
-      }
-    }
-    
-    console.log('📊 Final applications before transform:', apps.length, 'total');
-    
-    // Transform applications into notifications
-    const notifications = apps.map((app) => {
-      const statusRaw = app.status || 'Pending';
-      const status = String(statusRaw).toLowerCase();
-      const isAccepted = status === 'accepted';
-      const isRejected = status === 'rejected';
-      const isPending = status === 'pending';
+        return {
+          id: app._id || app.id || `app-${Math.random()}`,
+          category: 'application',
+          type,
+          icon,
+          iconBg,
+          iconColor,
+          title,
+          message,
+          jobTitle: app.job_title || 'Position',
+          hrName: app.hr_name || 'HR Team',
+          date: app.applied_at || app.updated_at || app.created_at || new Date().toISOString(),
+          status: 'unread',
+          applicationStatus: statusRaw,
+          jobId: app.job_id,
+        };
+      });
+
+      // ============ TRANSFORM INTERVIEWS INTO NOTIFICATIONS ============
+      const interviewNotifications = interviews.map((interview) => {
+        const interviewDateTime = new Date(`${interview.date}T${interview.time}`);
+        const now = new Date();
+        const isPast = interviewDateTime < now;
+        const isToday = interviewDateTime.toDateString() === now.toDateString();
+        const isTomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toDateString() === interviewDateTime.toDateString();
+
+        let icon = 'event';
+        let iconBg = '#fef3c7';
+        let iconColor = '#d97706';
+        let title = 'Interview Scheduled';
+        let message = `Your interview has been scheduled`;
+
+        if (isPast) {
+          icon = 'event_available';
+          iconBg = '#e5e7eb';
+          iconColor = '#6b7280';
+          title = 'Interview Completed';
+          message = `Your interview was scheduled`;
+        } else if (isToday) {
+          icon = 'event_available';
+          iconBg = '#dcfce7';
+          iconColor = '#16a34a';
+          title = 'Interview Today! 🎯';
+          message = `Your interview is scheduled for today`;
+        } else if (isTomorrow) {
+          icon = 'event_note';
+          iconBg = '#fef3c7';
+          iconColor = '#d97706';
+          title = 'Interview Tomorrow';
+          message = `Your interview is scheduled for tomorrow`;
+        }
+
+        // Format field name nicely
+        const fieldName = interview.field 
+          ? interview.field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+          : 'General';
+
+        return {
+          id: interview._id || `interview-${Math.random()}`,
+          category: 'interview',
+          type: isPast ? 'interview_past' : 'interview_upcoming',
+          icon,
+          iconBg,
+          iconColor,
+          title,
+          message,
+          interviewDate: interview.date,
+          interviewTime: interview.time,
+          duration: interview.duration,
+          interviewType: interview.type,
+          field: fieldName,
+          hrName: interview.hr_name || interview.candidate_name || 'HR Team',
+          date: interview.created_at || new Date().toISOString(),
+          status: 'unread',
+          interviewId: interview._id,
+          roomId: interview.room_id,
+        };
+      });
+
+      // ============ COMBINE AND SORT ALL NOTIFICATIONS ============
+      const allNotifications = [...appNotifications, ...interviewNotifications];
+      allNotifications.sort((a, b) => new Date(b.date) - new Date(a.date));
       
-      let type = 'application';
-      let icon = 'send';
-      let iconBg = '#dbeafe';
-      let iconColor = '#2563eb';
-      let title = 'Application Submitted';
-      let message = `Your application for ${app.job_title || 'the position'} has been submitted and is under review.`;
+      setItems(allNotifications);
       
-      if (isAccepted) {
-        type = 'accepted';
-        icon = 'check_circle';
-        iconBg = '#dcfce7';
-        iconColor = '#16a34a';
-        title = 'Application Accepted! 🎉';
-        message = `Congratulations! Your application for ${app.job_title || 'the position'} has been accepted.`;
-      } else if (isRejected) {
-        type = 'rejected';
-        icon = 'cancel';
-        iconBg = '#fee2e2';
-        iconColor = '#dc2626';
-        title = 'Application Status Update';
-        message = `Thank you for your interest in ${app.job_title || 'the position'}. Unfortunately, we have decided to move forward with other candidates.`;
-      }
-      
-      console.log(`✨ Transformed: ${app.job_title} - Status: "${statusRaw}" → Type: "${type}"`);
-      
-      return {
-        id: app._id || app.id || String(Math.random()),
-        type,
-        icon,
-        iconBg,
-        iconColor,
-        title,
-        message,
-        jobTitle: app.job_title || 'Position',
-        hrName: app.hr_name || 'HR Team',
-        date: app.applied_at || app.updated_at || app.created_at || new Date().toISOString(),
-        status: 'unread', // All notifications are unread by default
-        applicationStatus: statusRaw,
-        jobId: app.job_id,
+      // Summary log
+      const summary = {
+        total: allNotifications.length,
+        applications: appNotifications.length,
+        interviews: interviewNotifications.length,
+        accepted: appNotifications.filter(n => n.type === 'accepted').length,
+        rejected: appNotifications.filter(n => n.type === 'rejected').length,
+        pending: appNotifications.filter(n => n.type === 'application').length,
+        upcomingInterviews: interviewNotifications.filter(n => n.type === 'interview_upcoming').length,
+        pastInterviews: interviewNotifications.filter(n => n.type === 'interview_past').length,
       };
-    });
-    
-    // Sort by date (newest first)
-    notifications.sort((a, b) => new Date(b.date) - new Date(a.date));
-    
-    setItems(notifications);
-    
-    // Summary log
-    const summary = {
-      total: notifications.length,
-      accepted: notifications.filter(n => n.type === 'accepted').length,
-      rejected: notifications.filter(n => n.type === 'rejected').length,
-      pending: notifications.filter(n => n.type === 'application').length,
-    };
-    console.log('📊 Notifications Summary:', summary);
-    
-  } catch (e) {
-    console.error('❌ Error fetching notifications:', e);
-    setErr(e?.message || "Failed to load notifications");
-    setItems([]);
-  } finally {
-    setLoading(false);
-  }
-};
+      console.log('📊 Notifications Summary:', summary);
+      
+    } catch (e) {
+      console.error('❌ Error fetching notifications:', e);
+      setErr(e?.message || "Failed to load notifications");
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   React.useEffect(() => {
     fetchAll();
@@ -237,8 +319,8 @@ const CandidateNotification = ({ onNavigate }) => {
     
     window.addEventListener('storage', handleStorageChange);
     
-    // Poll for updates every 5 seconds
-    const interval = setInterval(fetchAll, 5000);
+    // Poll for updates every 10 seconds
+    const interval = setInterval(fetchAll, 10000);
     
     return () => {
       window.removeEventListener('storage', handleStorageChange);
@@ -253,6 +335,10 @@ const CandidateNotification = ({ onNavigate }) => {
     if (filterStatus !== 'all') {
       if (filterStatus === 'unread') {
         result = result.filter(n => n.status === 'unread');
+      } else if (filterStatus === 'interviews') {
+        result = result.filter(n => n.category === 'interview');
+      } else if (filterStatus === 'applications') {
+        result = result.filter(n => n.category === 'application');
       } else {
         result = result.filter(n => n.type === filterStatus);
       }
@@ -264,7 +350,8 @@ const CandidateNotification = ({ onNavigate }) => {
       result = result.filter(n => 
         n.title.toLowerCase().includes(q) || 
         n.message.toLowerCase().includes(q) ||
-        n.jobTitle.toLowerCase().includes(q)
+        (n.jobTitle && n.jobTitle.toLowerCase().includes(q)) ||
+        (n.field && n.field.toLowerCase().includes(q))
       );
     }
     
@@ -288,6 +375,13 @@ const CandidateNotification = ({ onNavigate }) => {
     if (days < 7) return `${days} day${days > 1 ? 's' : ''} ago`;
     
     return dt.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+  };
+
+  const formatInterviewDate = (date) => {
+    if (!date) return "";
+    const dt = new Date(date);
+    if (isNaN(dt.getTime())) return "";
+    return dt.toLocaleDateString("en-US", { weekday: 'short', day: "numeric", month: "short", year: "numeric" });
   };
 
   const markAsRead = async (id) => {
@@ -435,6 +529,8 @@ const CandidateNotification = ({ onNavigate }) => {
               >
                 <option value="all">All</option>
                 <option value="unread">Unread</option>
+                <option value="applications">Applications</option>
+                <option value="interviews">Interviews</option>
                 <option value="application">Submitted</option>
                 <option value="accepted">Accepted</option>
                 <option value="rejected">Rejected</option>
@@ -468,7 +564,7 @@ const CandidateNotification = ({ onNavigate }) => {
           <section style={{ background: 'white', padding: 20, borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
-                Your Applications ({filtered.length})
+                Your Notifications ({filtered.length})
               </h3>
               <span style={{ fontSize: 14, color: '#6b7280' }}>
                 {unreadCount} unread
@@ -484,7 +580,7 @@ const CandidateNotification = ({ onNavigate }) => {
                 <span className="material-icons-outlined" style={{ fontSize: 64, color: '#d1d5db', marginBottom: 16 }}>notifications_none</span>
                 <h3 style={{ fontSize: 18, fontWeight: 600, color: '#374151', marginBottom: 8 }}>No notifications</h3>
                 <p style={{ color: '#6b7280' }}>
-                  {search ? 'No notifications match your search' : 'You have no application updates at this time'}
+                  {search ? 'No notifications match your search' : 'You have no notifications at this time'}
                 </p>
               </div>
             ) : (
@@ -526,30 +622,85 @@ const CandidateNotification = ({ onNavigate }) => {
                         <p style={{ fontSize: 14, color: '#374151', marginBottom: 8 }}>
                           {notif.message}
                         </p>
-                        <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#6b7280' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <span className="material-icons-outlined" style={{ fontSize: 16 }}>work</span>
-                            <span>{notif.jobTitle}</span>
+                        
+                        {/* Application Details */}
+                        {notif.category === 'application' && (
+                          <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#6b7280' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span className="material-icons-outlined" style={{ fontSize: 16 }}>work</span>
+                              <span>{notif.jobTitle}</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span className="material-icons-outlined" style={{ fontSize: 16 }}>person</span>
+                              <span>{notif.hrName}</span>
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <span className="material-icons-outlined" style={{ fontSize: 16 }}>person</span>
-                            <span>{notif.hrName}</span>
+                        )}
+
+                        {/* Interview Details */}
+                        {notif.category === 'interview' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, color: '#6b7280', marginTop: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span className="material-icons-outlined" style={{ fontSize: 16 }}>calendar_today</span>
+                              <span style={{ fontWeight: 600, color: '#374151' }}>
+                                {formatInterviewDate(notif.interviewDate)} at {notif.interviewTime}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span className="material-icons-outlined" style={{ fontSize: 16 }}>timer</span>
+                                <span>{notif.duration} minutes</span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span className="material-icons-outlined" style={{ fontSize: 16 }}>work</span>
+                                <span>{notif.field}</span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span className="material-icons-outlined" style={{ fontSize: 16 }}>person</span>
+                                <span>{notif.hrName}</span>
+                              </div>
+                            </div>
+                            {notif.roomId && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                                <span className="material-icons-outlined" style={{ fontSize: 16, color: '#16a34a' }}>check_circle</span>
+                                <span style={{ color: '#16a34a', fontWeight: 600 }}>Interview room ready</span>
+                              </div>
+                            )}
                           </div>
-                        </div>
+                        )}
                       </div>
+                      
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <span style={{ 
-                          padding: '4px 12px', 
-                          borderRadius: 12, 
-                          fontWeight: 600, 
-                          fontSize: 12,
-                          color: notif.type === 'accepted' ? '#166534' : 
-                                 notif.type === 'rejected' ? '#991b1b' : '#1e40af',
-                          background: notif.type === 'accepted' ? '#dcfce7' : 
-                                     notif.type === 'rejected' ? '#fee2e2' : '#dbeafe'
-                        }}>
-                          {notif.applicationStatus}
-                        </span>
+                        {/* Application Status Badge */}
+                        {notif.category === 'application' && (
+                          <span style={{ 
+                            padding: '4px 12px', 
+                            borderRadius: 12, 
+                            fontWeight: 600, 
+                            fontSize: 12,
+                            color: notif.type === 'accepted' ? '#166534' : 
+                                   notif.type === 'rejected' ? '#991b1b' : '#1e40af',
+                            background: notif.type === 'accepted' ? '#dcfce7' : 
+                                       notif.type === 'rejected' ? '#fee2e2' : '#dbeafe'
+                          }}>
+                            {notif.applicationStatus}
+                          </span>
+                        )}
+
+                        {/* Interview Status Badge */}
+                        {notif.category === 'interview' && (
+                          <span style={{ 
+                            padding: '4px 12px', 
+                            borderRadius: 12, 
+                            fontWeight: 600, 
+                            fontSize: 12,
+                            color: notif.type === 'interview_past' ? '#6b7280' : '#d97706',
+                            background: notif.type === 'interview_past' ? '#f3f4f6' : '#fef3c7'
+                          }}>
+                            {notif.type === 'interview_past' ? 'Past Interview' : 'Upcoming'}
+                          </span>
+                        )}
+
                         {notif.status === 'unread' && (
                           <button 
                             onClick={(e) => {
@@ -559,6 +710,32 @@ const CandidateNotification = ({ onNavigate }) => {
                             style={{ padding: '6px 12px', border: '1px solid #e5e7eb', background: 'white', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 12 }}
                           >
                             Mark as Read
+                          </button>
+                        )}
+
+                        {/* Join Interview Button */}
+                        {notif.category === 'interview' && notif.roomId && notif.type === 'interview_upcoming' && (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              go(`/interview-room/${notif.interviewId}`);
+                            }}
+                            style={{ 
+                              padding: '6px 12px', 
+                              border: 'none', 
+                              background: '#16a34a', 
+                              color: 'white',
+                              borderRadius: 8, 
+                              cursor: 'pointer', 
+                              fontWeight: 600, 
+                              fontSize: 12,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4
+                            }}
+                          >
+                            <span className="material-icons-outlined" style={{ fontSize: 14 }}>meeting_room</span>
+                            Join Interview
                           </button>
                         )}
                       </div>

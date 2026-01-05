@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "material-icons/iconfont/material-icons.css";
 import "../styles/hrdashboard.css";
-import { API_BASE_URL as API_BASE } from "../../config";
+
+const API_BASE = 'http://localhost:8000';
 
 // Simple HTTP client without credentials
 const getAuthHeaders = () => {
@@ -82,6 +83,28 @@ const http = {
       throw error;
     }
   },
+
+  async delete(url) {
+    const fullUrl = url.startsWith('http') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+    console.log(`🗑️ DELETE ${fullUrl}`);
+    try {
+      const res = await fetch(fullUrl, { 
+        method: 'DELETE',
+        headers: { 
+          'Accept': 'application/json',
+          ...getAuthHeaders()
+        }
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`DELETE ${fullUrl} failed (${res.status}): ${errorText}`);
+      }
+      return res.json();
+    } catch (error) {
+      console.error('DELETE request failed:', error);
+      throw error;
+    }
+  },
 };
 
 function CandidatesApply({ onNavigate }) {
@@ -104,6 +127,7 @@ function CandidatesApply({ onNavigate }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [modal, setModal] = useState({ open: false, item: null, profile: null });
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, item: null });
 
   // Identify current user and role
   const currentUser = useMemo(() => {
@@ -260,7 +284,7 @@ function CandidatesApply({ onNavigate }) {
     return () => {
       alive = false;
     };
-  }, [API_BASE, jobId, candidateId, hrFromQuery]);
+  }, [jobId, candidateId, hrFromQuery]);
 
   useEffect(() => {
     let active = true;
@@ -297,7 +321,7 @@ function CandidatesApply({ onNavigate }) {
     
     fetchData();
     return () => { active = false; };
-  }, [API_BASE, hrNameResolved]);
+  }, [hrNameResolved]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -313,147 +337,192 @@ function CandidatesApply({ onNavigate }) {
   }, [applications, query, statusFilter]);
 
   async function updateStatus(item, status) {
-  const endpoint = `${API_BASE}/api/hr/update-status`;
-  const applicationId = item._id || item.id;
-  
-  if (!applicationId) {
-    setError('Missing application ID');
-    return;
-  }
-  
-  try {
-    setSubmitting(true);
-    setError('');
+    const endpoint = `${API_BASE}/api/hr/update-status`;
+    const applicationId = item._id || item.id;
     
-    const candidateId = item.candidate_id || item.candidateId || item.user?._id;
-    const candidateEmail = (item.email || item.candidate_email || item.user?.email || '').toLowerCase().trim();
-    const hrName = item.hr_name || item.postedBy?.name || hrNameResolved || '';
-    const jobId = item.job_id || item.job?._id || item.jobId || '';
-    
-    const payload = {
-      candidate_id: candidateId,
-      candidate_email: candidateEmail,
-      hr_name: hrName,
-      job_id: jobId,
-      status: status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
-    };
-    
-    console.log('📤 Sending update request to:', endpoint);
-    console.log('📦 Payload:', JSON.stringify(payload, null, 2));
-    
-    const response = await http.patch(endpoint, payload);
-    
-    console.log('✅ Response received:', response);
-    
-    // Check for various success indicators
-    const isSuccess = 
-      response?.success === true || 
-      response?.success === 'true' ||
-      (typeof response?.updated !== 'undefined') ||
-      (typeof response?.matched !== 'undefined') ||
-      response?.message?.toLowerCase().includes('success') ||
-      response?.status === 'success';
-    
-    if (isSuccess) {
-      // Update local component state immediately
-      setApplications(prev => 
-        prev.map(a => (a._id === applicationId || a.id === applicationId ? { ...a, status } : a))
-      );
-      
-      console.log('🔄 Updating localStorage...');
-      
-      // CRITICAL: Update localStorage so candidate can see the status change
-      try {
-        const raw = localStorage.getItem('applications');
-        console.log('📦 Current localStorage applications:', raw ? JSON.parse(raw).length : 0);
-        
-        if (raw) {
-          const allApps = JSON.parse(raw);
-          let updateCount = 0;
-          
-          const updatedApps = allApps.map(a => {
-            // Multiple matching strategies
-            const matchById = a._id === applicationId || a.id === applicationId;
-            const matchByCombo = (
-              String(a.candidate_id) === String(candidateId) && 
-              String(a.job_id) === String(jobId)
-            );
-            const matchByEmail = (
-              candidateEmail && 
-              String(a.candidate_email || '').toLowerCase() === candidateEmail &&
-              String(a.job_id) === String(jobId)
-            );
-            
-            const isMatch = matchById || matchByCombo || matchByEmail;
-            
-            if (isMatch) {
-              updateCount++;
-              console.log(`✏️  Updating application #${updateCount}:`, {
-                old: { id: a._id, status: a.status },
-                new: { id: a._id, status }
-              });
-              return { ...a, status, updated_at: new Date().toISOString() };
-            }
-            return a;
-          });
-          
-          localStorage.setItem('applications', JSON.stringify(updatedApps));
-          console.log(`💾 localStorage updated! Changed ${updateCount} application(s)`);
-          
-          if (updateCount === 0) {
-            console.warn('⚠️  No matching applications found in localStorage to update');
-            console.warn('Searched for:', { candidateId, jobId, applicationId });
-          }
-        } else {
-          console.warn('⚠️  No applications in localStorage');
-        }
-      } catch (e) {
-        console.error('❌ Failed to update localStorage:', e);
-      }
-      
-      // Also try to update myApplications if it exists
-      try {
-        const myApps = localStorage.getItem('myApplications');
-        if (myApps) {
-          const parsed = JSON.parse(myApps);
-          const updatedMyApps = parsed.map(a => {
-            const isMatch = 
-              a._id === applicationId || 
-              a.id === applicationId || 
-              (a.candidate_id === candidateId && a.job_id === jobId);
-            
-            return isMatch ? { ...a, status, updated_at: new Date().toISOString() } : a;
-          });
-          localStorage.setItem('myApplications', JSON.stringify(updatedMyApps));
-          console.log('💾 myApplications updated successfully');
-        }
-      } catch (e) {
-        console.warn('Failed to update myApplications:', e);
-      }
-      
-      // Force a storage event for other tabs/components
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: 'applications',
-        newValue: localStorage.getItem('applications'),
-        url: window.location.href
-      }));
-      
-      setSuccessMsg(`Application ${status.toLowerCase()} successfully!`);
-      setTimeout(() => setSuccessMsg(''), 3000);
+    if (!applicationId) {
+      setError('Missing application ID');
       return;
     }
     
-    console.warn('⚠️  Unexpected response format:', response);
-    throw new Error(`Unexpected response format: ${JSON.stringify(response)}`);
-    
-  } catch (error) {
-    console.error('❌ Update failed with error:', error);
-    setError(error.message || 'Failed to update application status');
-    setTimeout(() => setError(''), 10000);
-  } finally {
-    setSubmitting(false);
+    try {
+      setSubmitting(true);
+      setError('');
+      
+      const candidateId = item.candidate_id || item.candidateId || item.user?._id;
+      const candidateEmail = (item.email || item.candidate_email || item.user?.email || '').toLowerCase().trim();
+      const hrName = item.hr_name || item.postedBy?.name || hrNameResolved || '';
+      const jobId = item.job_id || item.job?._id || item.jobId || '';
+      
+      const payload = {
+        candidate_id: candidateId,
+        candidate_email: candidateEmail,
+        hr_name: hrName,
+        job_id: jobId,
+        status: status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
+      };
+      
+      console.log('📤 Sending update request to:', endpoint);
+      console.log('📦 Payload:', JSON.stringify(payload, null, 2));
+      
+      const response = await http.patch(endpoint, payload);
+      
+      console.log('✅ Response received:', response);
+      
+      // Check for various success indicators
+      const isSuccess = 
+        response?.success === true || 
+        response?.success === 'true' ||
+        (typeof response?.updated !== 'undefined') ||
+        (typeof response?.matched !== 'undefined') ||
+        response?.message?.toLowerCase().includes('success') ||
+        response?.status === 'success';
+      
+      if (isSuccess) {
+        // Update local component state immediately
+        setApplications(prev => 
+          prev.map(a => (a._id === applicationId || a.id === applicationId ? { ...a, status } : a))
+        );
+        
+        console.log('🔄 Updating localStorage...');
+        
+        // CRITICAL: Update localStorage so candidate can see the status change
+        try {
+          const raw = localStorage.getItem('applications');
+          console.log('📦 Current localStorage applications:', raw ? JSON.parse(raw).length : 0);
+          
+          if (raw) {
+            const allApps = JSON.parse(raw);
+            let updateCount = 0;
+            
+            const updatedApps = allApps.map(a => {
+              // Multiple matching strategies
+              const matchById = a._id === applicationId || a.id === applicationId;
+              const matchByCombo = (
+                String(a.candidate_id) === String(candidateId) && 
+                String(a.job_id) === String(jobId)
+              );
+              const matchByEmail = (
+                candidateEmail && 
+                String(a.candidate_email || '').toLowerCase() === candidateEmail &&
+                String(a.job_id) === String(jobId)
+              );
+              
+              const isMatch = matchById || matchByCombo || matchByEmail;
+              
+              if (isMatch) {
+                updateCount++;
+                console.log(`✏️  Updating application #${updateCount}:`, {
+                  old: { id: a._id, status: a.status },
+                  new: { id: a._id, status }
+                });
+                return { ...a, status, updated_at: new Date().toISOString() };
+              }
+              return a;
+            });
+            
+            localStorage.setItem('applications', JSON.stringify(updatedApps));
+            console.log(`💾 localStorage updated! Changed ${updateCount} application(s)`);
+            
+            if (updateCount === 0) {
+              console.warn('⚠️  No matching applications found in localStorage to update');
+              console.warn('Searched for:', { candidateId, jobId, applicationId });
+            }
+          } else {
+            console.warn('⚠️  No applications in localStorage');
+          }
+        } catch (e) {
+          console.error('❌ Failed to update localStorage:', e);
+        }
+        
+        // Also try to update myApplications if it exists
+        try {
+          const myApps = localStorage.getItem('myApplications');
+          if (myApps) {
+            const parsed = JSON.parse(myApps);
+            const updatedMyApps = parsed.map(a => {
+              const isMatch = 
+                a._id === applicationId || 
+                a.id === applicationId || 
+                (a.candidate_id === candidateId && a.job_id === jobId);
+              
+              return isMatch ? { ...a, status, updated_at: new Date().toISOString() } : a;
+            });
+            localStorage.setItem('myApplications', JSON.stringify(updatedMyApps));
+            console.log('💾 myApplications updated successfully');
+          }
+        } catch (e) {
+          console.warn('Failed to update myApplications:', e);
+        }
+        
+        // Force a storage event for other tabs/components
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: 'applications',
+          newValue: localStorage.getItem('applications'),
+          url: window.location.href
+        }));
+        
+        setSuccessMsg(`Application ${status.toLowerCase()} successfully!`);
+        setTimeout(() => setSuccessMsg(''), 3000);
+        return;
+      }
+      
+      console.warn('⚠️  Unexpected response format:', response);
+      throw new Error(`Unexpected response format: ${JSON.stringify(response)}`);
+      
+    } catch (error) {
+      console.error('❌ Update failed with error:', error);
+      setError(error.message || 'Failed to update application status');
+      setTimeout(() => setError(''), 10000);
+    } finally {
+      setSubmitting(false);
+    }
   }
-}
+
+  async function deleteApplication(item) {
+    const applicationId = item._id || item.id;
+    
+    if (!applicationId) {
+      setError('Missing application ID');
+      return;
+    }
+    
+    try {
+      setSubmitting(true);
+      setError('');
+      
+      const endpoint = `${API_BASE}/api/hr/applications/${applicationId}`;
+      console.log('🗑️ Deleting application:', applicationId);
+      
+      await http.delete(endpoint);
+      
+      // Remove from local state
+      setApplications(prev => prev.filter(a => (a._id !== applicationId && a.id !== applicationId)));
+      
+      // Update localStorage
+      try {
+        const raw = localStorage.getItem('applications');
+        if (raw) {
+          const allApps = JSON.parse(raw);
+          const updatedApps = allApps.filter(a => a._id !== applicationId && a.id !== applicationId);
+          localStorage.setItem('applications', JSON.stringify(updatedApps));
+        }
+      } catch (e) {
+        console.warn('Failed to update localStorage:', e);
+      }
+      
+      setSuccessMsg('Application deleted successfully!');
+      setTimeout(() => setSuccessMsg(''), 3000);
+      setDeleteConfirm({ open: false, item: null });
+      
+    } catch (error) {
+      console.error('❌ Delete failed:', error);
+      setError(error.message || 'Failed to delete application');
+      setTimeout(() => setError(''), 10000);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   // Enhanced view profile handler
   const handleViewProfile = async (item) => {
@@ -626,6 +695,26 @@ function CandidatesApply({ onNavigate }) {
                                 disabled={submitting}
                               >
                                 {submitting ? 'Updating...' : 'Reject'}
+                              </button>
+                              <button 
+                                style={{ 
+                                  padding: '8px 12px', 
+                                  borderRadius: 8, 
+                                  border: 'none', 
+                                  cursor: submitting ? 'not-allowed' : 'pointer', 
+                                  fontWeight: 600, 
+                                  background: '#fef2f2', 
+                                  color: '#991b1b', 
+                                  opacity: submitting ? 0.6 : 1,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }} 
+                                onClick={() => setDeleteConfirm({ open: true, item: a })}
+                                disabled={submitting}
+                              >
+                                <span className="material-icons-outlined" style={{ fontSize: 16 }}>delete</span>
+                                Delete
                               </button>
                             </div>
                           </td>
@@ -846,6 +935,90 @@ function CandidatesApply({ onNavigate }) {
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Delete Confirmation Modal */}
+          {deleteConfirm.open && deleteConfirm.item && (
+            <div 
+              style={{ 
+                position: 'fixed', 
+                inset: 0, 
+                background: 'rgba(0,0,0,0.5)', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                zIndex: 60,
+                padding: '1rem'
+              }} 
+              onClick={() => setDeleteConfirm({ open: false, item: null })}
+            >
+              <div 
+                style={{ 
+                  width: 'min(400px, 92vw)', 
+                  background: '#fff', 
+                  borderRadius: 12, 
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.2)', 
+                  padding: 24 
+                }} 
+                onClick={e => e.stopPropagation()}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                  <div style={{ 
+                    width: 48, 
+                    height: 48, 
+                    borderRadius: '50%', 
+                    background: '#fee2e2', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center' 
+                  }}>
+                    <span className="material-icons-outlined" style={{ fontSize: 24, color: '#991b1b' }}>warning</span>
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 4 }}>Delete Application?</h3>
+                    <p style={{ fontSize: 14, color: '#6b7280' }}>This action cannot be undone.</p>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: 14, color: '#374151', marginBottom: 20 }}>
+                  Are you sure you want to delete the application from <strong>{deleteConfirm.item.name || deleteConfirm.item.candidate_name}</strong> for <strong>{deleteConfirm.item.job_title}</strong>?
+                </p>
+
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                  <button 
+                    style={{ 
+                      padding: '8px 16px', 
+                      borderRadius: 6, 
+                      border: '1px solid #e5e7eb', 
+                      cursor: 'pointer', 
+                      fontWeight: 600, 
+                      background: '#fff', 
+                      color: '#374151' 
+                    }} 
+                    onClick={() => setDeleteConfirm({ open: false, item: null })}
+                    disabled={submitting}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    style={{ 
+                      padding: '8px 16px', 
+                      borderRadius: 6, 
+                      border: 'none', 
+                      cursor: submitting ? 'not-allowed' : 'pointer', 
+                      fontWeight: 600, 
+                      background: '#dc2626', 
+                      color: '#fff',
+                      opacity: submitting ? 0.6 : 1
+                    }} 
+                    onClick={() => deleteApplication(deleteConfirm.item)}
+                    disabled={submitting}
+                  >
+                    {submitting ? 'Deleting...' : 'Delete Application'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
