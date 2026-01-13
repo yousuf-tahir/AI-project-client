@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getCandidateCompletedInterviews, checkAnalysisExists } from '../../api/analysisService';
+import { checkAnalysisExists } from '../../api/analysisService';
 import 'material-icons/iconfont/material-icons.css';
 import '../styles/AnalysisListPage.css';
 
@@ -20,6 +20,9 @@ const CandidateAnalysisList = ({ onNavigate }) => {
   const user = getUser();
   const candidateId = user?._id || user?.id;
 
+  // Get API base URL
+  const API_BASE = import.meta.env?.VITE_API_BASE || 'http://localhost:8000';
+
   useEffect(() => {
     if (candidateId) {
       loadInterviews();
@@ -30,13 +33,35 @@ const CandidateAnalysisList = ({ onNavigate }) => {
     setLoading(true);
     try {
       console.log('[CANDIDATE ANALYSIS] Loading interviews for:', candidateId);
-      const data = await getCandidateCompletedInterviews(candidateId);
-      console.log('[CANDIDATE ANALYSIS] Loaded:', data);
-      setInterviews(data);
+      
+      // FIXED: Use the same API call as HR - directly fetch from backend
+      const response = await fetch(
+        `${API_BASE}/api/interviews?candidate_id=${candidateId}&status=completed`
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch completed interviews');
+      }
+
+      const data = await response.json();
+      console.log('[CANDIDATE ANALYSIS] Raw API response:', data);
+      
+      // Format the data
+      const formattedInterviews = data.map(interview => ({
+        interviewId: interview._id,
+        jobTitle: interview.jobTitle || 'Interview Session',
+        field: interview.field || 'general',
+        date: interview.created_at || interview.date,
+        type: interview.type || 'voice',
+        duration: interview.duration || 30
+      }));
+
+      console.log('[CANDIDATE ANALYSIS] Formatted interviews:', formattedInterviews);
+      setInterviews(formattedInterviews);
 
       // Check feedback availability
       const feedbackChecks = await Promise.all(
-        data.map(async (interview) => {
+        formattedInterviews.map(async (interview) => {
           try {
             const status = await checkAnalysisExists(interview.interviewId);
             return { id: interview.interviewId, available: status.exists };
@@ -50,6 +75,7 @@ const CandidateAnalysisList = ({ onNavigate }) => {
       feedbackChecks.forEach(check => {
         feedbackMap[check.id] = check.available;
       });
+      console.log('[CANDIDATE ANALYSIS] Feedback availability:', feedbackMap);
       setFeedbackAvailable(feedbackMap);
     } catch (error) {
       console.error('[CANDIDATE ANALYSIS] Error loading:', error);

@@ -11,11 +11,37 @@ const CandidateJobs = ({ onNavigate }) => {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
   const [hrCache, setHrCache] = useState({});
+  const [appliedJobs, setAppliedJobs] = useState(new Set());
 
   // Hide global topbar on this page only
   useEffect(() => {
     try { document.body.classList.add('hide-global-topbar'); } catch {}
     return () => { try { document.body.classList.remove('hide-global-topbar'); } catch {} };
+  }, []);
+
+  // Load applied jobs from localStorage on mount
+  useEffect(() => {
+    try {
+      const rawUser = localStorage.getItem('user') || sessionStorage.getItem('user');
+      const parsed = rawUser ? JSON.parse(rawUser) : null;
+      const candidateId = parsed?._id || parsed?.id || parsed?.user_id || '';
+      
+      if (!candidateId) return;
+
+      const raw = localStorage.getItem('applications');
+      const arr = raw ? JSON.parse(raw) : [];
+      
+      if (Array.isArray(arr)) {
+        const appliedJobIds = arr
+          .filter(a => String(a.candidate_id) === String(candidateId))
+          .map(a => String(a.job_id));
+        
+        setAppliedJobs(new Set(appliedJobIds));
+        console.log('📋 Loaded applied jobs:', appliedJobIds);
+      }
+    } catch (err) {
+      console.error('Failed to load applied jobs:', err);
+    }
   }, []);
 
   // SPA navigation helper
@@ -163,6 +189,11 @@ const CandidateJobs = ({ onNavigate }) => {
   const publicUrlFor = (job) => {
     const id = resolveId(job);
     return id ? `${window.location.origin}/public/job/${id}` : '';
+  };
+
+  // Check if job has been applied to
+  const hasApplied = (jobId) => {
+    return appliedJobs.has(String(jobId));
   };
 
   return (
@@ -323,8 +354,11 @@ const CandidateJobs = ({ onNavigate }) => {
                   const location = job.location || job.city || job.address || hrProfile?.location || hrProfile?.city || hrProfile?.address || '';
                   const email = job.hr_email || job.email || job.contact_email || (job.hr && job.hr.email) || hrProfile?.email || hrProfile?.user?.email || '';
                   const phone = job.hr_phone || job.phone || job.contact_phone || (job.hr && job.hr.phone) || hrProfile?.phone || hrProfile?.user?.phone || '';
+                  const jobId = resolveId(job);
+                  const alreadyApplied = hasApplied(jobId);
+                  
                   return (
-                    <div key={resolveId(job)} className="job-card" style={{ borderRadius: 12, border: '1px solid var(--border-color,#e5e7eb)' }}>
+                    <div key={jobId} className="job-card" style={{ borderRadius: 12, border: '1px solid var(--border-color,#e5e7eb)' }}>
                       <div className="job-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div>
                           <div className="job-title" style={{ fontSize: 18, fontWeight: 700 }}>{job.job_title}</div>
@@ -392,124 +426,118 @@ const CandidateJobs = ({ onNavigate }) => {
                           View Details
                         </a>
                         <button
-  className="button button-primary"
-  onClick={async (e) => {
-    e.preventDefault();
-    const jobId = resolveId(job);
-    const hrId = resolveHrUserId(job) || (job?.hr && (job.hr._id || job.hr.id)) || job?.user_id || job?.owner_id || '';
-    let candidateId = '';
-    let candidateName = '';
-    let candidateEmail = '';
-    
-    try {
-      const rawUser = localStorage.getItem('user') || sessionStorage.getItem('user');
-      const parsed = rawUser ? JSON.parse(rawUser) : null;
-      candidateId = parsed?._id || parsed?.id || parsed?.user_id || localStorage.getItem('user_id') || sessionStorage.getItem('user_id') || '';
-      candidateName = parsed?.full_name || parsed?.name || parsed?.user?.full_name || '';
-      candidateEmail = parsed?.email || parsed?.user?.email || localStorage.getItem('email') || sessionStorage.getItem('email') || '';
-    } catch {}
+                          className="button button-primary"
+                          style={alreadyApplied ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            
+                            // Check if already applied
+                            if (alreadyApplied) {
+                              alert('Already applied for this job');
+                              return;
+                            }
+                            
+                            const hrId = resolveHrUserId(job) || (job?.hr && (job.hr._id || job.hr.id)) || job?.user_id || job?.owner_id || '';
+                            let candidateId = '';
+                            let candidateName = '';
+                            let candidateEmail = '';
+                            
+                            try {
+                              const rawUser = localStorage.getItem('user') || sessionStorage.getItem('user');
+                              const parsed = rawUser ? JSON.parse(rawUser) : null;
+                              candidateId = parsed?._id || parsed?.id || parsed?.user_id || localStorage.getItem('user_id') || sessionStorage.getItem('user_id') || '';
+                              candidateName = parsed?.full_name || parsed?.name || parsed?.user?.full_name || '';
+                              candidateEmail = parsed?.email || parsed?.user?.email || localStorage.getItem('email') || sessionStorage.getItem('email') || '';
+                            } catch {}
 
-    if (!candidateId || !jobId) {
-      alert('Missing required information to apply');
-      return;
-    }
+                            if (!candidateId || !jobId) {
+                              alert('Missing required information to apply');
+                              return;
+                            }
 
-    const payload = {
-      candidate_id: candidateId,
-      job_id: jobId,
-      hr_name: hrName || '',
-    };
+                            const payload = {
+                              candidate_id: candidateId,
+                              job_id: jobId,
+                              hr_name: hrName || '',
+                            };
 
-    console.log('📤 Submitting application:', payload);
+                            console.log('📤 Submitting application:', payload);
 
-    // Try to submit to backend first
-    const endpoints = [
-      `${API_BASE}/api/applications`,
-      `${API_BASE}/applications`,
-    ];
-    
-    let backendSuccess = false;
-    for (const url of endpoints) {
-      try {
-        const res = await fetch(url, { 
-          method: 'POST', 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...authHeaders()
-          }, 
-          body: JSON.stringify(payload) 
-        });
-        if (res.ok) {
-          backendSuccess = true;
-          console.log('✅ Application submitted to backend');
-          break;
-        }
-      } catch (e) {
-        console.warn('Backend submission failed:', e);
-      }
-    }
+                            // Try to submit to backend first
+                            const endpoints = [
+                              `${API_BASE}/api/applications`,
+                              `${API_BASE}/applications`,
+                            ];
+                            
+                            let backendSuccess = false;
+                            for (const url of endpoints) {
+                              try {
+                                const res = await fetch(url, { 
+                                  method: 'POST', 
+                                  headers: { 
+                                    'Content-Type': 'application/json',
+                                    ...authHeaders()
+                                  }, 
+                                  body: JSON.stringify(payload) 
+                                });
+                                if (res.ok) {
+                                  backendSuccess = true;
+                                  console.log('✅ Application submitted to backend');
+                                  break;
+                                }
+                              } catch (e) {
+                                console.warn('Backend submission failed:', e);
+                              }
+                            }
 
-    // Always save to localStorage regardless of backend success
-    try {
-      const now = new Date().toISOString();
-      const applicationRecord = {
-        _id: `local_${Date.now()}_${candidateId}_${jobId}`,
-        candidate_id: candidateId,
-        candidate_name: candidateName,
-        candidate_email: candidateEmail,
-        job_id: jobId,
-        job_title: job?.job_title || job?.title || '',
-        hr_id: hrId || '',
-        hr_name: hrName || '',
-        organization: orgName || '',
-        status: 'Pending',
-        applied_at: now,
-        created_at: now,
-        field: job?.qualification || '',
-        experience: `${job?.experience_years || 0} years`,
-        skills: (job?.skills || []).map(s => s.name || s),
-      };
+                            // Always save to localStorage regardless of backend success
+                            try {
+                              const now = new Date().toISOString();
+                              const applicationRecord = {
+                                _id: `local_${Date.now()}_${candidateId}_${jobId}`,
+                                candidate_id: candidateId,
+                                candidate_name: candidateName,
+                                candidate_email: candidateEmail,
+                                job_id: jobId,
+                                job_title: job?.job_title || job?.title || '',
+                                hr_id: hrId || '',
+                                hr_name: hrName || '',
+                                organization: orgName || '',
+                                status: 'Pending',
+                                applied_at: now,
+                                created_at: now,
+                                field: job?.qualification || '',
+                                experience: `${job?.experience_years || 0} years`,
+                                skills: (job?.skills || []).map(s => s.name || s),
+                              };
 
-      console.log('💾 Saving application to localStorage:', applicationRecord);
+                              console.log('💾 Saving application to localStorage:', applicationRecord);
 
-      const raw = localStorage.getItem('applications');
-      const arr = raw ? JSON.parse(raw) : [];
-      
-      // Check if application already exists
-      const existingIndex = Array.isArray(arr) ? arr.findIndex(a => 
-        String(a.candidate_id) === String(candidateId) && 
-        String(a.job_id) === String(jobId)
-      ) : -1;
+                              const raw = localStorage.getItem('applications');
+                              const arr = raw ? JSON.parse(raw) : [];
+                              
+                              // Add new application
+                              arr.push(applicationRecord);
+                              console.log('➕ Added new application');
 
-      if (existingIndex >= 0) {
-        // Update existing application
-        arr[existingIndex] = {
-          ...arr[existingIndex],
-          ...applicationRecord,
-          _id: arr[existingIndex]._id, // Keep original ID
-        };
-        console.log('📝 Updated existing application');
-      } else {
-        // Add new application
-        arr.push(applicationRecord);
-        console.log('➕ Added new application');
-      }
+                              localStorage.setItem('applications', JSON.stringify(arr));
+                              console.log('✅ localStorage updated successfully');
 
-      localStorage.setItem('applications', JSON.stringify(arr));
-      console.log('✅ localStorage updated successfully');
+                              // Update applied jobs state
+                              setAppliedJobs(prev => new Set([...prev, String(jobId)]));
 
-      alert(backendSuccess 
-        ? 'Application submitted successfully!' 
-        : 'Application saved locally. It will be synced when the server is available.'
-      );
-    } catch (err) {
-      console.error('❌ Failed to save application:', err);
-      alert('Failed to save application. Please try again.');
-    }
-  }}
->
-  Apply Now
-</button>
+                              alert(backendSuccess 
+                                ? 'Application submitted successfully!' 
+                                : 'Application saved locally. It will be synced when the server is available.'
+                              );
+                            } catch (err) {
+                              console.error('❌ Failed to save application:', err);
+                              alert('Failed to save application. Please try again.');
+                            }
+                          }}
+                        >
+                          {alreadyApplied ? 'Applied ✓' : 'Apply Now'}
+                        </button>
                       </div>
                     </div>
                   );

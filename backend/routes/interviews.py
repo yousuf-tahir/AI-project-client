@@ -1,4 +1,5 @@
 # routes/interviews.py
+import logging
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -6,7 +7,7 @@ from uuid import uuid4
 from db.database import Database
 import datetime
 from fastapi import Request
-import logging
+
 
 router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
@@ -263,19 +264,27 @@ async def update_interview_status(
 @router.delete("/{interview_id}")
 async def delete_interview(interview_id: str):
     """
-    Delete an interview.
+    Delete an interview AND its associated analysis (CASCADE DELETE).
     """
     db = await Database.get_db()
     if db is None:
         raise HTTPException(status_code=500, detail="Database unavailable")
 
-    result = await db.interviews.delete_one({"_id": interview_id})
+    # First, delete associated analysis if it exists
+    analysis_result = await db.interview_analysis.delete_one({"interview_id": interview_id})
+    if analysis_result.deleted_count > 0:
+        print(f"✅ Deleted associated analysis for interview {interview_id}")
+    
+    # Then delete the interview
+    interview_result = await db.interviews.delete_one({"_id": interview_id})
 
-    if result.deleted_count == 0:
+    if interview_result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Interview not found")
 
-    return {"message": "Interview deleted successfully"}
-
+    return {
+        "message": "Interview and associated analysis deleted successfully",
+        "deleted_analysis": analysis_result.deleted_count > 0
+    }
   
 
 @router.get("/my-interviews")

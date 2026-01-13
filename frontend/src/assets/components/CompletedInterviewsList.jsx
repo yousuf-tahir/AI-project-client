@@ -2,12 +2,49 @@ import React, { useState, useEffect } from 'react';
 import { getCompletedInterviews, checkAnalysisExists, generateAnalysis } from '../../api/analysisService';
 import 'material-icons/iconfont/material-icons.css';
 import '../styles/CompletedInterviewsList.css';
+import axios from 'axios';
+
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+const CANDIDATES_API = `${API_BASE}/api/admin/candidates`;
 
 const CompletedInterviewsList = ({ onNavigate, onViewAnalysis }) => {
   const [loading, setLoading] = useState(true);
   const [interviews, setInterviews] = useState([]);
   const [analysisStatus, setAnalysisStatus] = useState({});
   const [generating, setGenerating] = useState({});
+  const [candidateMap, setCandidateMap] = useState({});
+
+  // Fetch candidates - moved to top so it runs unconditionally
+  useEffect(() => {
+    const fetchCandidates = async () => {
+      try {
+        const token =
+          localStorage.getItem('token') || sessionStorage.getItem('token');
+
+        const res = await axios.get(CANDIDATES_API, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+
+        const candidates = Array.isArray(res.data)
+          ? res.data
+          : res.data?.data || [];
+
+        const map = {};
+        candidates.forEach((c) => {
+          const id = c._id || c.id || c.user_id;
+          if (id) {
+            map[id] = c.name || c.full_name || c.email || 'Unknown Candidate';
+          }
+        });
+
+        setCandidateMap(map);
+      } catch (err) {
+        console.error('[COMPLETED INTERVIEWS] Failed to fetch candidates', err);
+      }
+    };
+
+    fetchCandidates();
+  }, []);
 
   const getHRUser = () => {
     try {
@@ -132,7 +169,7 @@ const CompletedInterviewsList = ({ onNavigate, onViewAnalysis }) => {
               <div className="interview-info">
                 <div className="interview-header-row">
                   <span className="candidate-name">
-                    {interview.candidate_id || 'Candidate'}
+                    {candidateMap[interview.candidate_id] || 'Candidate'}
                   </span>
                   <span className="interview-date">
                     {formatDate(interview.completed_at || interview.date)}

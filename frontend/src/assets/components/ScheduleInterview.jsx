@@ -24,7 +24,7 @@ export default function ScheduleInterview({ onNavigate }) {
   const [field, setField] = useState("web_development");
   const [toast, setToast] = useState({ type: "", message: "" });
   const [submitting, setSubmitting] = useState(false);
-  const [deletingId, setDeletingId] = useState(null); // Track which interview is being deleted
+  const [deletingId, setDeletingId] = useState(null);
   const [candidates, setCandidates] = useState([{ value: "", label: "Select Candidate" }]);
   const [scheduledInterviews, setScheduledInterviews] = useState([]);
   const [loadingInterviews, setLoadingInterviews] = useState(false);
@@ -108,7 +108,7 @@ export default function ScheduleInterview({ onNavigate }) {
     if (oldInterviews.length === 0) return;
 
     for (const interview of oldInterviews) {
-      await deleteInterview(interview._id, true); // silent = true
+      await deleteInterview(interview._id, true);
     }
   };
 
@@ -246,7 +246,6 @@ export default function ScheduleInterview({ onNavigate }) {
         showToast("success", "Interview deleted successfully");
       }
 
-      // Remove from state
       setScheduledInterviews(prev => prev.filter(i => i._id !== interviewId));
 
     } catch (err) {
@@ -277,10 +276,18 @@ export default function ScheduleInterview({ onNavigate }) {
     return (now - interviewDateTime) > (24 * 60 * 60 * 1000);
   };
 
+  // Helper: Check if interview time has passed (including duration)
+  const hasInterviewPassed = (interview) => {
+    if (!interview.date || !interview.time) return false;
+    const interviewDateTime = new Date(`${interview.date}T${interview.time}`);
+    const interviewEndTime = new Date(interviewDateTime.getTime() + (interview.duration || 30) * 60 * 1000);
+    const now = new Date();
+    return now > interviewEndTime;
+  };
+
   return (
     <div className="dashboard-layout">
       <aside className="sidebar">
-        {/* Sidebar unchanged */}
         <div className="sidebar-header">
           <span className="app-logo">HR</span> Recruit
         </div>
@@ -324,11 +331,9 @@ export default function ScheduleInterview({ onNavigate }) {
 
       <div className="main-content">
         <main className="content-area">
-          {/* Schedule Form (unchanged) */}
           <section className="card schedule-interview-card">
             <div className="criteria-form">
               <h3 className="form-title">Schedule New Interview</h3>
-              {/* ... all your existing form fields ... */}
               <div className="form-group">
                 <label htmlFor="candidate">Candidate</label>
                 <div className="input-group">
@@ -411,7 +416,6 @@ export default function ScheduleInterview({ onNavigate }) {
             </div>
           </section>
 
-          {/* Scheduled Interviews List */}
           <section className="card schedule-interview-card" style={{ marginTop: '20px' }}>
             <h3 className="form-title">Scheduled Interviews</h3>
 
@@ -423,6 +427,8 @@ export default function ScheduleInterview({ onNavigate }) {
               <div className="interviews-list">
                 {scheduledInterviews.map((interview) => {
                   const isOld = isOlderThan24h(interview);
+                  const isPassed = hasInterviewPassed(interview);
+                  
                   return (
                     <div key={interview._id} className={`interview-card ${isOld ? 'interview-old' : ''}`}>
                       <div className="interview-info">
@@ -454,7 +460,12 @@ export default function ScheduleInterview({ onNavigate }) {
                         </div>
                       </div>
                       <div className="interview-actions">
-                        {interview.room_id ? (
+                        {isPassed ? (
+                          <span className="room-status" style={{ color: '#6b7280' }}>
+                            <span className="material-icons-outlined">event_busy</span>
+                            Interview Time Passed
+                          </span>
+                        ) : interview.room_id ? (
                           <>
                             <span className="room-status">
                               <span className="material-icons-outlined">check_circle</span>
@@ -472,7 +483,6 @@ export default function ScheduleInterview({ onNavigate }) {
                           </button>
                         )}
 
-                        {/* Delete Button */}
                         <button
                           className="button button-danger button-small"
                           onClick={() => deleteInterview(interview._id)}

@@ -7,12 +7,13 @@
   background: linear-gradient(135deg, #f8fafc 0%, #e0f2fe 100%);
 }
 
-/* Sidebar Styles - Fixed Width */
+/* Sidebar Styles - UPDATED TO MATCH CANDIDATE DASHBOARD */
 .candidate-analysis-layout .candidate-sidebar {
   width: 260px;
   min-width: 260px;
-  background: white;
-  border-right: 1px solid #e2e8f0;
+  background: #1e1e2f; /* Changed from white to dark like dashboard */
+  color: #fff; /* Changed text to white */
+  border-right: 1px solid rgba(255,255,255,0.06); /* Changed border */
   display: flex;
   flex-direction: column;
   position: fixed;
@@ -25,7 +26,7 @@
 
 .candidate-analysis-layout .sidebar-header {
   padding: 1.5rem;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid rgba(255,255,255,0.06); /* Changed border */
 }
 
 .candidate-analysis-layout .sidebar-logo {
@@ -35,14 +36,19 @@
 }
 
 .candidate-analysis-layout .app-logo-candidate {
+  background-color: #4cafef; /* Changed to match dashboard */
+  color: #fff;
+  font-weight: bold;
+  padding: 6px 10px;
+  border-radius: 6px;
   font-size: 1.5rem;
-  font-weight: 700;
-  color: #3b82f6;
+  display: inline-block;
+  width: fit-content;
 }
 
 .candidate-analysis-layout .logo-subtitle {
   font-size: 0.75rem;
-  color: #64748b;
+  color: #cfd2dc; /* Changed to light gray for dark background */
   font-weight: 500;
 }
 
@@ -73,20 +79,20 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  color: #64748b;
+  color: #cfd2dc; /* Changed to light gray */
   text-decoration: none;
   border-radius: 8px;
   transition: all 0.2s;
 }
 
 .candidate-analysis-layout .nav-item a:hover {
-  background: #f1f5f9;
-  color: #3b82f6;
+  background: #2d2d44; /* Changed to dark hover */
+  color: #fff; /* Changed to white on hover */
 }
 
 .candidate-analysis-layout .nav-item.active a {
-  background: #dbeafe;
-  color: #2563eb;
+  background: #2d2d44; /* Changed to dark active */
+  color: #fff; /* Changed to white */
   font-weight: 600;
 }
 
@@ -100,7 +106,7 @@
 
 .candidate-analysis-layout .sidebar-footer {
   padding: 1rem;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid rgba(255,255,255,0.1); /* Changed border */
 }
 
 .candidate-analysis-layout .user-info {
@@ -108,7 +114,7 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem;
-  background: #f8fafc;
+  background: rgba(255,255,255,0.05); /* Changed to subtle dark background */
   border-radius: 8px;
 }
 
@@ -132,12 +138,12 @@
 .candidate-analysis-layout .user-name {
   font-size: 0.875rem;
   font-weight: 600;
-  color: #1e293b;
+  color: #fff; /* Changed to white */
 }
 
 .candidate-analysis-layout .user-role {
   font-size: 0.75rem;
-  color: #64748b;
+  color: #cfd2dc; /* Changed to light gray */
 }
 
 /* Main Content - With Left Margin for Sidebar */

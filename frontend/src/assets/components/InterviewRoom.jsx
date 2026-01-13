@@ -741,7 +741,7 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
 
     const getTimerColor = () => {
         if (interviewState === 'reading') return 'timer-reading';
-        if (timeLeft <= 5) return 'timer-ending';
+        
         return 'timer-active';
     };
 
@@ -877,7 +877,7 @@ const InterviewRoom = ({ interviewId, onNavigate, user }) => {
                                         <div className="recording-controls">
                                             <button
                                                 onClick={recording ? stopRecording : startRecording}
-                                                disabled={transcribing || timeLeft <= 5}
+                                                
                                                 className={`recording-button ${recording ? 'stop-recording-button' : 'start-recording-button'}`}
                                             >
                                                 {recording ? '⏹️ Stop Recording' : '🎙️ Start Recording'}

@@ -25,6 +25,15 @@ const Interview = ({ onNavigate }) => {
     }
   }, []);
 
+  // Helper function to format field name (convert snake_case to Title Case)
+  const formatFieldName = (field) => {
+    if (!field) return 'General Interview';
+    return field
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   // Fetch interviews on mount
   useEffect(() => {
     let isMounted = true;
@@ -85,9 +94,9 @@ const Interview = ({ onNavigate }) => {
       .filter(interview => {
         try {
           const interviewDateTime = new Date(`${interview.date}T${interview.time}`);
-          const graceTime = new Date(interviewDateTime.getTime() + 60 * 1000);
-          return graceTime > new Date();
-
+          // FIXED: Check if interview END time (start + duration) is in the future
+          const interviewEndTime = new Date(interviewDateTime.getTime() + (interview.duration || 30) * 60 * 1000);
+          return interviewEndTime > new Date();
         } catch {
           return false;
         }
@@ -107,8 +116,11 @@ const Interview = ({ onNavigate }) => {
           countdown = `Starts in ${diffDays} day${diffDays > 1 ? 's' : ''}`;
         } else if (diffHours > 0) {
           countdown = `Starts in ${diffHours} hour${diffHours > 1 ? 's' : ''}`;
+        } else if (diffMs > 0) {
+          const diffMinutes = Math.floor(diffMs / (1000 * 60));
+          countdown = `Starts in ${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
         } else {
-          countdown = 'Starting soon!';
+          countdown = 'Interview in progress!';
         }
 
         const colors = [
@@ -121,20 +133,22 @@ const Interview = ({ onNavigate }) => {
         const colorClass = colors[index % colors.length];
 
         return {
-          interviewId: interview.interviewId,
+          interviewId: interview._id, // FIXED: Use _id instead of interviewId
           day,
           month,
           jobTitle: interview.jobTitle || 'Interview Session',
           time: interview.time,
           countdown,
           colorClass,
-          hasRoom: interview.hasRoom,
-          roomId: interview.roomId,
-          roomStatus: interview.roomStatus,
+          hasRoom: !!interview.room_id, // FIXED: Check if room_id exists
+          roomId: interview.room_id,
+          roomStatus: interview.room_status,
           date: interview.date,
           duration: interview.duration,
           type: interview.type,
-          joinUrl: interview.joinUrl
+          field: interview.field,
+          joinUrl: interview.joinUrl,
+          isPast: false
         };
       });
   }, [realInterviews]);
@@ -147,7 +161,9 @@ const Interview = ({ onNavigate }) => {
       .filter(interview => {
         try {
           const interviewDateTime = new Date(`${interview.date}T${interview.time}`);
-          return interviewDateTime <= new Date();
+          // FIXED: Check if interview END time (start + duration) has passed
+          const interviewEndTime = new Date(interviewDateTime.getTime() + (interview.duration || 30) * 60 * 1000);
+          return interviewEndTime <= new Date();
         } catch {
           return false;
         }
@@ -165,7 +181,7 @@ const Interview = ({ onNavigate }) => {
         const colorClass = colors[index % colors.length];
 
         return {
-          interviewId: interview.interviewId,
+          interviewId: interview._id, // FIXED: Use _id instead of interviewId
           day,
           month,
           jobTitle: interview.jobTitle || 'Interview Session',
@@ -174,8 +190,10 @@ const Interview = ({ onNavigate }) => {
           date: interview.date,
           duration: interview.duration,
           type: interview.type,
-          hasRoom: interview.hasRoom,
-          roomId: interview.roomId
+          field: interview.field,
+          hasRoom: !!interview.room_id, // FIXED: Check if room_id exists
+          roomId: interview.room_id,
+          isPast: true
         };
       });
   }, [realInterviews]);
@@ -242,10 +260,15 @@ const Interview = ({ onNavigate }) => {
                 <span className="nav-label">Practice Interview</span>
               </a>
             </li>
-            
+            <li className="nav-item">
+              <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-analysis-list'); }}>
+                <span className="material-icons-outlined">rate_review</span>
+                <span className="nav-label">Interview Feedback</span>
+              </a>
+            </li>
             <li className="nav-item">
               <a href="#" onClick={(e) => { e.preventDefault(); go('/candidate-feedback'); }}>
-                <span className="material-icons-outlined">rate_review</span>
+                <span className="material-icons-outlined">feedback</span>
                 <span className="nav-label">Feedback</span>
               </a>
             </li>
@@ -337,55 +360,70 @@ const Interview = ({ onNavigate }) => {
                   </div>
                 ) : (
                   <div className="interviews-list">
-                    {upcomingInterviews.map((interview) => (
-                      <div className="interview-card" key={interview.interviewId}>
-                        <div className="interview-header">
-                          <div className={`interview-date ${interview.colorClass}`}>
-                            <span className="day">{interview.day}</span>
-                            <span className="month">{interview.month}</span>
-                          </div>
-                          <div className="interview-details">
-                            <h4>{interview.jobTitle}</h4>
-                            <p className="interview-time">{interview.time}</p>
-                            <p className="interview-duration">{interview.duration} minutes</p>
-                            <p className="interview-countdown" style={{
-                              color: '#6366f1',
-                              fontSize: '0.875rem',
-                              fontWeight: '500',
-                              marginTop: '0.25rem'
-                            }}>
-                              {interview.countdown}
-                            </p>
-                          </div>
-                          <div className="interview-status">
-                            {interview.hasRoom ? (
-                              <span className="status-badge" style={{
-                                background: '#d1fae5',
-                                color: '#065f46',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.25rem'
-                              }}>
-                                <span className="material-icons-outlined" style={{ fontSize: '1rem' }}>check_circle</span>
-                                Room Ready
-                              </span>
-                            ) : (
-                              <span className="status-badge" style={{
-                                background: '#fef3c7',
-                                color: '#92400e'
-                              }}>
-                                Waiting for Room
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="interview-actions">
-                          {interview.hasRoom && (() => {
-                            const interviewDateTime = new Date(`${interview.date}T${interview.time}`);
-                            const now = new Date();
-                            const isJoinTime = now >= interviewDateTime;
+                    {upcomingInterviews.map((interview) => {
+                      const interviewDateTime = new Date(`${interview.date}T${interview.time}`);
+                      const now = new Date();
+                      const isJoinTime = now >= interviewDateTime;
 
-                            return (
+                      return (
+                        <div className="interview-card" key={interview.interviewId}>
+                          <div className="interview-header">
+                            <div className={`interview-date ${interview.colorClass}`}>
+                              <span className="day">{interview.day}</span>
+                              <span className="month">{interview.month}</span>
+                            </div>
+                            <div className="interview-details">
+                              <h4>{interview.jobTitle}</h4>
+                              <div className="interview-field-tag">
+                                <span className="material-icons-outlined" style={{ 
+                                  fontSize: '0.875rem', 
+                                  marginRight: '4px',
+                                  verticalAlign: 'middle' 
+                                }}>category</span>
+                                <span style={{ 
+                                  fontSize: '0.875rem',
+                                  color: '#6b7280',
+                                  fontWeight: '500',
+                                  verticalAlign: 'middle'
+                                }}>
+                                  {formatFieldName(interview.field)}
+                                </span>
+                              </div>
+                              <p className="interview-time">{interview.time}</p>
+                              <p className="interview-duration">{interview.duration} minutes</p>
+                              <p className="interview-countdown" style={{
+                                color: '#6366f1',
+                                fontSize: '0.875rem',
+                                fontWeight: '500',
+                                marginTop: '0.25rem'
+                              }}>
+                                {interview.countdown}
+                              </p>
+                            </div>
+                            <div className="interview-status">
+                              {interview.hasRoom ? (
+                                <span className="status-badge" style={{
+                                  background: '#d1fae5',
+                                  color: '#065f46',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem'
+                                }}>
+                                  <span className="material-icons-outlined" style={{ fontSize: '1rem' }}>check_circle</span>
+                                  Room Ready
+                                </span>
+                              ) : (
+                                <span className="status-badge" style={{
+                                  background: '#fef3c7',
+                                  color: '#92400e'
+                                }}>
+                                  Waiting for Room
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="interview-actions">
+                            {interview.hasRoom && (
                               <button
                                 className="button button-primary button-small"
                                 onClick={() => isJoinTime && handleJoinInterview(interview.interviewId)}
@@ -401,18 +439,18 @@ const Interview = ({ onNavigate }) => {
                                 <span className="material-icons-outlined" style={{ fontSize: '1rem' }}>meeting_room</span>
                                 {isJoinTime ? "Join Interview" : `Available at ${interview.time}`}
                               </button>
-                            );
-                          })()}
+                            )}
 
-                          <button
-                            className="button button-secondary button-small"
-                            onClick={() => openInterviewDetails(interview)}
-                          >
-                            View Details
-                          </button>
+                            <button
+                              className="button button-secondary button-small"
+                              onClick={() => openInterviewDetails(interview)}
+                            >
+                              View Details
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -450,9 +488,25 @@ const Interview = ({ onNavigate }) => {
                           </div>
                           <div className="interview-details">
                             <h4>{interview.jobTitle}</h4>
+                            <div className="interview-field-tag">
+                              <span className="material-icons-outlined" style={{ 
+                                fontSize: '0.875rem', 
+                                marginRight: '4px',
+                                verticalAlign: 'middle' 
+                              }}>category</span>
+                              <span style={{ 
+                                fontSize: '0.875rem',
+                                color: '#6b7280',
+                                fontWeight: '500',
+                                verticalAlign: 'middle'
+                              }}>
+                                {formatFieldName(interview.field)}
+                              </span>
+                            </div>
                             <p className="interview-time">{interview.time}</p>
                             <p className="interview-duration">{interview.duration} minutes</p>
                           </div>
+                         
                           <div className="interview-status">
                             <span className="status-badge status-completed">Completed</span>
                           </div>
@@ -485,6 +539,12 @@ const Interview = ({ onNavigate }) => {
                 <span className="label">Position:</span>
                 <span className="value">{interviewModal.jobTitle}</span>
               </div>
+              {interviewModal.field && (
+                <div className="detail-item">
+                  <span className="label">Field:</span>
+                  <span className="value">{formatFieldName(interviewModal.field)}</span>
+                </div>
+              )}
               <div className="detail-item">
                 <span className="label">Date:</span>
                 <span className="value">{interviewModal.date}</span>
@@ -500,7 +560,12 @@ const Interview = ({ onNavigate }) => {
               <div className="detail-item">
                 <span className="label">Status:</span>
                 <span className="value">
-                  {interviewModal.hasRoom ? (
+                  {interviewModal.isPast ? (
+                    <span style={{ color: '#6b7280', fontWeight: '500' }}>
+                      <span className="material-icons-outlined" style={{ fontSize: '1rem', verticalAlign: 'middle' }}>check</span>
+                      {' '}Interview Completed
+                    </span>
+                  ) : interviewModal.hasRoom ? (
                     <span style={{ color: '#10b981', fontWeight: '500' }}>
                       <span className="material-icons-outlined" style={{ fontSize: '1rem', verticalAlign: 'middle' }}>check_circle</span>
                       {' '}Room Ready - You can join now
@@ -513,7 +578,7 @@ const Interview = ({ onNavigate }) => {
             </div>
             <div className="modal-footer">
               <button className="button button-secondary" onClick={closeInterviewModal}>Close</button>
-              {interviewModal.hasRoom && (
+              {interviewModal.hasRoom && !interviewModal.isPast && (
                 <button
                   className="button button-primary"
                   onClick={() => {
@@ -534,6 +599,11 @@ const Interview = ({ onNavigate }) => {
       <style>{`
         @keyframes spin {
           to { transform: rotate(360deg); }
+        }
+        .interview-field-tag {
+          margin: 4px 0;
+          display: flex;
+          align-items: center;
         }
       `}</style>
     </div>

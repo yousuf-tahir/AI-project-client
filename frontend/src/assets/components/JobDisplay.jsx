@@ -154,12 +154,7 @@
                   <span className="nav-label">Profile</span>
                 </a>
               </li>
-              <li className="nav-item">
-                <a href="#" onClick={handleNavigation('/interview-questions')}>
-                  <span className="material-icons-outlined">quiz</span>
-                  <span className="nav-label">Interview Questions</span>
-                </a>
-              </li>
+            
               <li className="nav-item"><a href="#" onClick={(e) => go("/interview-questions", e)}><span className="material-icons-outlined">quiz</span><span className="nav-label">Interview Questions</span></a></li>
                 <li className="nav-item">
                 <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('/hr-analysis-list'); }}>

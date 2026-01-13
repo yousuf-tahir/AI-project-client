@@ -1,52 +1,70 @@
 import asyncio
 from db.database import Database
-from bson import ObjectId
 
-async def check_interviews():
+async def cleanup_orphaned_analyses():
+    """
+    Delete analysis records that have no corresponding interview
+    """
     try:
-        # Get database instance
         db = await Database.get_db()
         
-        # Check if the collection exists
-        collections = await db.list_collection_names()
-        print(f"\nAvailable collections: {collections}")
+        print("\n" + "="*80)
+        print("🧹 CLEANING UP ORPHANED ANALYSES")
+        print("="*80)
         
-        # Count all documents in the interviews collection
-        count = await db.interviews.count_documents({})
-        print(f"\nTotal interviews: {count}")
+        # Get all analyses
+        analyses = await db.interview_analysis.find({}).to_list(length=None)
         
-        # Count interviews with HR assigned
-        hr_count = await db.interviews.count_documents({"hr_id": {"$exists": True, "$ne": None}})
-        print(f"Interviews with HR assigned: {hr_count}")
+        orphaned_ids = []
         
-        # Find one interview document
-        interview = await db.interviews.find_one()
-        if interview:
-            print("\nSample interview document:")
-            # Convert ObjectId to string for printing
-            if '_id' in interview:
-                interview['_id'] = str(interview['_id'])
-            if 'candidate_id' in interview:
-                interview['candidate_id'] = str(interview['candidate_id'])
-            if 'hr_id' in interview:
-                interview['hr_id'] = str(interview['hr_id'])
-            print(interview)
+        for analysis in analyses:
+            interview_id = analysis.get("interview_id")
+            candidate_id = analysis.get("candidate_id")
+            score = analysis.get("overall_score")
+            created = analysis.get("created_at")
+            
+            # Check if interview exists
+            interview = await db.interviews.find_one({"_id": interview_id})
+            
+            if not interview:
+                orphaned_ids.append(interview_id)
+                print(f"\n⚠️  Found orphaned analysis:")
+                print(f"   Interview ID: {interview_id}")
+                print(f"   Candidate ID: {candidate_id}")
+                print(f"   Score: {score}")
+                print(f"   Created: {created}")
+        
+        if not orphaned_ids:
+            print("\n✅ No orphaned analyses found!")
         else:
-            print("\nNo interviews found in the database.")
+            print(f"\n📋 Found {len(orphaned_ids)} orphaned analysis/analyses")
+            print("\nThese analyses have no corresponding interview record.")
+            print("They were likely created for interviews that were later deleted.")
             
-        # Check if the collection is empty
-        if count > 0:
-            # Get the first document to check its structure
-            first_doc = await db.interviews.find_one()
-            print("\nFirst document structure:")
-            print({k: type(v).__name__ for k, v in first_doc.items()})
+            confirm = input("\n❓ Delete these orphaned analyses? (yes/no): ")
             
+            if confirm.lower() == 'yes':
+                deleted_count = 0
+                for interview_id in orphaned_ids:
+                    result = await db.interview_analysis.delete_one({"interview_id": interview_id})
+                    if result.deleted_count > 0:
+                        print(f"✅ Deleted orphaned analysis: {interview_id}")
+                        deleted_count += 1
+                    else:
+                        print(f"❌ Failed to delete: {interview_id}")
+                
+                print(f"\n🎉 Cleanup complete! Deleted {deleted_count} orphaned analysis/analyses")
+            else:
+                print("\n❌ Cleanup cancelled - orphaned analyses will remain in database")
+        
+        print("="*80 + "\n")
+        
     except Exception as e:
-        print(f"\nError: {e}")
+        print(f"\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
-        # Close the database connection
         await Database.close_connection()
 
-# Run the async function
 if __name__ == "__main__":
-    asyncio.run(check_interviews())
+    asyncio.run(cleanup_orphaned_analyses())
